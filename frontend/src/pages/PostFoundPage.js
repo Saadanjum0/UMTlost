@@ -101,28 +101,50 @@ const PostFoundPage = () => {
     
     try {
       // Upload each file and get URLs
-      const uploadPromises = validFiles.map(async (file) => {
+      const uploadResults = [];
+      
+      for (const file of validFiles) {
         try {
+          console.log(`Uploading file: ${file.name}, type: ${file.type}, size: ${file.size}`);
+          
           const response = await uploadAPI.uploadImage(file);
-          return {
-            url: response.public_url,
+          console.log('Upload response:', response);
+          
+          uploadResults.push({
+            url: response.public_url || response.url,
             preview: URL.createObjectURL(file), // For immediate preview
-            file: file
-          };
+            file: file,
+            name: file.name
+          });
+          
         } catch (error) {
           console.error(`Failed to upload ${file.name}:`, error);
-          throw new Error(`Failed to upload ${file.name}`);
+          
+          // Extract meaningful error message
+          let errorMessage = `Failed to upload ${file.name}`;
+          if (error.response?.data?.detail) {
+            errorMessage += `: ${error.response.data.detail}`;
+          } else if (error.message) {
+            errorMessage += `: ${error.message}`;
+          }
+          
+          setError(prev => prev ? `${prev}; ${errorMessage}` : errorMessage);
         }
-      });
+      }
       
-      const uploadResults = await Promise.all(uploadPromises);
-      
-      // Add uploaded images to form data
-      setFormData(prev => ({
-        ...prev,
-        images: [...prev.images, ...uploadResults.map(result => result.url)],
-        imageFiles: [...prev.imageFiles, ...uploadResults]
-      }));
+      if (uploadResults.length > 0) {
+        // Add uploaded images to form data
+        setFormData(prev => ({
+          ...prev,
+          images: [...prev.images, ...uploadResults.map(result => result.url)],
+          imageFiles: [...prev.imageFiles, ...uploadResults]
+        }));
+        
+        // Clear any previous errors if at least one upload succeeded
+        if (uploadResults.length === validFiles.length) {
+          setError('');
+        }
+      }
       
     } catch (error) {
       console.error('Error uploading images:', error);

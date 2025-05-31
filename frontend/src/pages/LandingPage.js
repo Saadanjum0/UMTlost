@@ -1,9 +1,10 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, Plus, Users, Clock, CheckCircle, ArrowRight, MapPin, Shield, Smartphone } from 'lucide-react';
+import { Search, Plus, Users, Clock, CheckCircle, ArrowRight, MapPin, Shield, Smartphone, Star, TrendingUp } from 'lucide-react';
 import { UserContext } from '../App';
 import { itemsAPI } from '../services/api';
+import ImageWithFallback from '../components/ImageWithFallback';
 
 const LandingPage = () => {
   const { user } = useContext(UserContext);
@@ -252,7 +253,7 @@ const LandingPage = () => {
                   transition={{ duration: 0.6, delay: index * 0.1 }}
                   viewport={{ once: true }}
                 >
-                  <img
+                  <ImageWithFallback
                     src={item.image}
                     alt={item.title}
                     className="w-full h-48 object-cover rounded-xl mb-4"

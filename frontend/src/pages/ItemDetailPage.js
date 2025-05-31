@@ -1,4 +1,4 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
@@ -6,6 +6,7 @@ import {
   MessageCircle, CheckCircle, X, User, Mail, Phone, AlertTriangle
 } from 'lucide-react';
 import { UserContext } from '../App';
+import ImageWithFallback from '../components/ImageWithFallback';
 
 const ItemDetailPage = () => {
   const { id } = useParams();
@@ -117,7 +118,7 @@ const ItemDetailPage = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
             >
-              <img
+              <ImageWithFallback
                 src={item.image}
                 alt={item.title}
                 className="w-full h-96 object-cover rounded-2xl shadow-lg"
@@ -272,7 +273,7 @@ const ItemDetailPage = () => {
                       to={`/item/${similarItem.id}`}
                       className="group"
                     >
-                      <img
+                      <ImageWithFallback
                         src={similarItem.image}
                         alt={similarItem.title}
                         className="w-full h-32 object-cover rounded-lg mb-3 group-hover:scale-105 transition-transform duration-200"

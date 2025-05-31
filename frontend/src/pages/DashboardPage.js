@@ -1,9 +1,27 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Plus, Search, Clock, CheckCircle, X, Eye, MessageCircle, MapPin, Calendar } from 'lucide-react';
+import { 
+  User, 
+  MapPin, 
+  Calendar, 
+  Clock, 
+  DollarSign, 
+  Eye, 
+  Edit, 
+  Trash2, 
+  Plus,
+  Search,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  MessageSquare,
+  Phone,
+  Mail
+} from 'lucide-react';
 import { UserContext } from '../App';
 import { itemsAPI } from '../services/api';
+import ImageWithFallback from '../components/ImageWithFallback';
 
 const DashboardPage = () => {
   const { user } = useContext(UserContext);
@@ -189,7 +207,7 @@ const DashboardPage = () => {
                                 {item.urgency}
                               </span>
                             </div>
-                            <img
+                            <ImageWithFallback
                               src={item.image}
                               alt={item.title}
                               className="w-full h-32 object-cover rounded-lg mb-4"
@@ -243,7 +261,7 @@ const DashboardPage = () => {
                                 Claims: 2
                               </div>
                             </div>
-                            <img
+                            <ImageWithFallback
                               src={item.image}
                               alt={item.title}
                               className="w-full h-32 object-cover rounded-lg mb-4"
@@ -311,7 +329,7 @@ const DashboardPage = () => {
                       return (
                         <div key={request.id} className="card p-6">
                           <div className="flex items-start space-x-4">
-                            <img
+                            <ImageWithFallback
                               src={item?.image}
                               alt={item?.title}
                               className="w-20 h-20 object-cover rounded-lg"

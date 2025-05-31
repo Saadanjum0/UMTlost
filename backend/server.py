@@ -701,103 +701,110 @@ async def upload_image(file: UploadFile = File(...), current_user = Depends(get_
                 detail="File size too large. Maximum size is 10MB"
             )
         
-        # Validate and process image
-        try:
-            # Reset file pointer for PIL
-            image = Image.open(io.BytesIO(content))
-            
-            # Convert to RGB if necessary (for JPEG compatibility)
-            if image.mode in ('RGBA', 'LA', 'P'):
-                background = Image.new('RGB', image.size, (255, 255, 255))
-                if image.mode == 'P':
-                    image = image.convert('RGBA')
-                background.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
-                image = background
-            
-            # Resize if too large (max 1920x1920)
-            max_size = (1920, 1920)
-            if image.size[0] > max_size[0] or image.size[1] > max_size[1]:
-                image.thumbnail(max_size, Image.Resampling.LANCZOS)
-            
-            # Save optimized image
-            output = io.BytesIO()
-            image_format = 'JPEG' if file.content_type in ['image/jpeg', 'image/jpg'] else 'PNG'
-            image.save(output, format=image_format, quality=85, optimize=True)
-            content = output.getvalue()
-            
-        except Exception as e:
-            logger.error(f"Image processing error: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or corrupted image file"
-            )
+        # Validate and process image (skip for SVG)
+        if file.content_type != "image/svg+xml":
+            try:
+                # Reset file pointer for PIL
+                image = Image.open(io.BytesIO(content))
+                
+                # Convert to RGB if necessary (for JPEG compatibility)
+                if image.mode in ('RGBA', 'LA', 'P'):
+                    background = Image.new('RGB', image.size, (255, 255, 255))
+                    if image.mode == 'P':
+                        image = image.convert('RGBA')
+                    background.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
+                    image = background
+                
+                # Resize if too large (max 1920x1920)
+                max_size = (1920, 1920)
+                if image.size[0] > max_size[0] or image.size[1] > max_size[1]:
+                    image.thumbnail(max_size, Image.Resampling.LANCZOS)
+                
+                # Save optimized image
+                output = io.BytesIO()
+                image_format = 'JPEG' if file.content_type in ['image/jpeg', 'image/jpg'] else 'PNG'
+                image.save(output, format=image_format, quality=85, optimize=True)
+                content = output.getvalue()
+                
+            except Exception as e:
+                logger.error(f"Image processing error: {str(e)}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid or corrupted image file"
+                )
         
         # Generate unique filename with proper extension
         file_extension = 'jpg' if file.content_type in ['image/jpeg', 'image/jpg'] else 'png'
         if file.filename and '.' in file.filename:
             original_ext = file.filename.split('.')[-1].lower()
-            if original_ext in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff']:
+            if original_ext in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'svg']:
                 file_extension = original_ext
         
+        # Create filename with user folder structure
         filename = f"{current_user['id']}/{uuid.uuid4()}.{file_extension}"
         
         # Upload to Supabase Storage
         supabase = get_supabase()
         
         try:
-            # Try to upload the file
-            storage_response = supabase.storage.from_("item-images").upload(filename, content, {
-                "content-type": file.content_type,
-                "upsert": False
-            })
+            # Upload the file
+            storage_response = supabase.storage.from_("item-images").upload(
+                filename, 
+                content, 
+                {
+                    "content-type": file.content_type,
+                    "upsert": False
+                }
+            )
             
-            # Check for upload errors
+            # Check for upload errors - Supabase Python client returns different error format
             if hasattr(storage_response, 'error') and storage_response.error:
                 logger.error(f"Supabase storage error: {storage_response.error}")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Failed to upload image: {storage_response.error.message if hasattr(storage_response.error, 'message') else 'Unknown error'}"
+                    detail=f"Failed to upload image: {storage_response.error}"
                 )
+            
+            # Check if upload was successful by looking at the response
+            if not storage_response or (hasattr(storage_response, 'data') and not storage_response.data):
+                # Try with upsert=True in case of filename conflict
+                filename = f"{current_user['id']}/{uuid.uuid4()}-{int(time.time())}.{file_extension}"
+                storage_response = supabase.storage.from_("item-images").upload(
+                    filename, 
+                    content, 
+                    {
+                        "content-type": file.content_type,
+                        "upsert": True
+                    }
+                )
+                
+                if hasattr(storage_response, 'error') and storage_response.error:
+                    logger.error(f"Retry upload failed: {storage_response.error}")
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Failed to upload image after retry"
+                    )
             
         except Exception as e:
             logger.error(f"Storage upload error: {str(e)}")
-            # If upload fails, try with a different filename (in case of conflict)
-            filename = f"{current_user['id']}/{uuid.uuid4()}-{int(time.time())}.{file_extension}"
-            try:
-                storage_response = supabase.storage.from_("item-images").upload(filename, content, {
-                    "content-type": file.content_type,
-                    "upsert": True
-                })
-                if hasattr(storage_response, 'error') and storage_response.error:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Failed to upload image to storage"
-                    )
-            except Exception as retry_error:
-                logger.error(f"Retry upload failed: {str(retry_error)}")
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to upload image after retry"
-                )
-        
-        # Get public URL
-        try:
-            public_url_response = supabase.storage.from_("item-images").get_public_url(filename)
-            public_url = public_url_response
-            
-            # Ensure we have a valid URL
-            if not public_url or not isinstance(public_url, str):
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to generate public URL for uploaded image"
-                )
-            
-        except Exception as e:
-            logger.error(f"Error getting public URL: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to get public URL for uploaded image"
+                detail=f"Failed to upload image: {str(e)}"
             )
+        
+        # Get public URL - construct it manually for reliability
+        try:
+            # Get the Supabase URL from settings
+            supabase_url = settings.supabase_url.rstrip('/')
+            public_url = f"{supabase_url}/storage/v1/object/public/item-images/{filename}"
+            
+            # Verify the URL is accessible (optional - can be removed if causing issues)
+            logger.info(f"Generated public URL: {public_url}")
+            
+        except Exception as e:
+            logger.error(f"Error generating public URL: {str(e)}")
+            # Fallback URL construction
+            public_url = f"https://eulbutktbvfwkvfowlel.supabase.co/storage/v1/object/public/item-images/{filename}"
         
         logger.info(f"Successfully uploaded image: {filename} -> {public_url}")
         

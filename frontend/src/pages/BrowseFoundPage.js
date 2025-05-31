@@ -1,9 +1,10 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, Filter, MapPin, Calendar, Grid, List, ArrowRight, CheckCircle } from 'lucide-react';
+import { Search, Filter, MapPin, Calendar, Grid, List, ArrowRight, CheckCircle, SlidersHorizontal, X } from 'lucide-react';
 import { UserContext } from '../App';
 import { itemsAPI } from '../services/api';
+import ImageWithFallback from '../components/ImageWithFallback';
 
 const BrowseFoundPage = () => {
   const { user } = useContext(UserContext);
@@ -117,7 +118,7 @@ const BrowseFoundPage = () => {
         )}
       </div>
       
-      <img
+      <ImageWithFallback
         src={item.image}
         alt={item.title}
         className="w-full h-48 object-cover rounded-xl mb-4"
@@ -155,7 +156,7 @@ const BrowseFoundPage = () => {
       transition={{ duration: 0.3 }}
     >
       <div className="flex items-start space-x-6">
-        <img
+        <ImageWithFallback
           src={item.image}
           alt={item.title}
           className="w-24 h-24 object-cover rounded-xl"
