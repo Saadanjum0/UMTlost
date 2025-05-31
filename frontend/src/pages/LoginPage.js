@@ -1,20 +1,32 @@
-import React, { useState, useContext } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useContext, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowRight, CheckCircle } from 'lucide-react';
 import { UserContext } from '../App';
 import { authAPI } from '../services/api';
 
 const LoginPage = () => {
   const { setUser } = useContext(UserContext);
   const navigate = useNavigate();
+  const location = useLocation();
   const [formData, setFormData] = useState({
-    email: '',
+    email: location.state?.email || '',
     password: ''
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState(location.state?.message || '');
+
+  // Clear success message after 5 seconds
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => {
+        setSuccessMessage('');
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -28,7 +40,13 @@ const LoginPage = () => {
       });
       
       setUser(response.user);
-      navigate('/dashboard');
+      
+      // Redirect based on user role
+      if (response.user.is_admin) {
+        navigate('/admin');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err) {
       console.error('Login error:', err);
       
@@ -90,12 +108,22 @@ const LoginPage = () => {
               <p className="text-gray-600">Sign in to your account to continue</p>
             </div>
 
+            {/* Success Message */}
+            {successMessage && (
+              <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <CheckCircle size={20} className="text-green-600" />
+                  <p className="text-green-700 text-sm">{successMessage}</p>
+                </div>
+              </div>
+            )}
+
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Email */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  University Email
+                  Email Address
                 </label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
@@ -137,7 +165,6 @@ const LoginPage = () => {
                 </div>
               </div>
 
-              {/* Forgot Password */}
               <div className="text-right">
                 <Link to="/forgot-password" className="text-sm text-blue-600 hover:text-blue-800">
                   Forgot your password?
@@ -167,15 +194,6 @@ const LoginPage = () => {
                 )}
               </button>
             </form>
-
-            {/* Demo Credentials */}
-            <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-              <p className="text-sm text-blue-700 font-medium mb-2">Demo Credentials:</p>
-              <p className="text-xs text-blue-600">
-                Email: any@umt.edu<br />
-                Password: any password
-              </p>
-            </div>
 
             {/* Sign Up Link */}
             <div className="text-center mt-6">

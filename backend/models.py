@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Literal
 from datetime import datetime, date
 from enum import Enum
+from pydantic import validator
 
 # Enums for better type safety
 class ItemType(str, Enum):
@@ -38,33 +39,40 @@ class ClaimStatus(str, Enum):
 # User Models
 class UserProfile(BaseModel):
     id: str
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
+    first_name: str
+    last_name: str
+    email: Optional[str] = None
     student_id: Optional[str] = None
     employee_id: Optional[str] = None
     phone_number: Optional[str] = None
-    user_type: Optional[str] = "STUDENT"
-    account_status: Optional[str] = "ACTIVE"
+    user_type: str = "STUDENT"
+    account_status: str = "ACTIVE"
     profile_image_url: Optional[str] = None
     bio: Optional[str] = None
-    email_verified: Optional[bool] = False
+    email_verified: bool = False
     last_login: Optional[datetime] = None
     preferences: Optional[dict] = None
     stats: Optional[dict] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    email: Optional[str] = None  # Email from auth.users
-    
-    # Computed field for backward compatibility
-    @property
-    def full_name(self) -> str:
-        if self.first_name and self.last_name:
-            return f"{self.first_name} {self.last_name}"
-        elif self.first_name:
-            return self.first_name
-        else:
-            return "User"
-    
+    is_admin: Optional[bool] = False
+    full_name: Optional[str] = None
+
+    @validator('full_name', always=True)
+    def set_full_name(cls, v, values):
+        if v is None:
+            first_name = values.get('first_name', '')
+            last_name = values.get('last_name', '')
+            return f"{first_name} {last_name}".strip()
+        return v
+
+    @validator('is_admin', always=True)
+    def set_is_admin(cls, v, values):
+        if v is None:
+            user_type = values.get('user_type', 'STUDENT')
+            return user_type == 'ADMIN'
+        return v
+
     @property
     def avatar_url(self) -> Optional[str]:
         return self.profile_image_url

@@ -11,6 +11,7 @@ import aiofiles
 from PIL import Image
 import io
 import time
+from pydantic import BaseModel
 
 # Import our custom modules
 from config import settings
@@ -122,13 +123,25 @@ async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "timestamp": datetime.utcnow()}
 
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    full_name: str
+    is_admin: Optional[bool] = False
+
 # Authentication endpoints
 @api_router.post("/auth/register", response_model=dict)
 async def register(request: RegisterRequest):
     """Register a new user"""
     try:
         supabase = get_supabase()
-        supabase_admin = get_supabase_admin()  # Use admin client for profile creation
+        
+        # Check if email is university email (basic validation)
+        if not request.email.endswith('@umt.edu'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Please use your university email address"
+            )
         
         # Create user in Supabase Auth
         auth_response = supabase.auth.sign_up({
@@ -136,7 +149,8 @@ async def register(request: RegisterRequest):
             "password": request.password,
             "options": {
                 "data": {
-                    "full_name": request.full_name
+                    "full_name": request.full_name,
+                    "is_admin": request.is_admin
                 }
             }
         })
@@ -153,25 +167,40 @@ async def register(request: RegisterRequest):
         # Wait for trigger to complete and check if profile exists
         time.sleep(0.5)
         
-        profile_response = supabase_admin.table("profiles").select("*").eq("id", user_id).execute()
+        profile_response = supabase.table("profiles").select("*").eq("id", user_id).execute()
         
         if not profile_response.data:
-            # Profile not created by trigger, create manually using admin client
+            # Profile not created by trigger, create manually
+            # Split full name into first and last name
+            name_parts = request.full_name.strip().split()
+            first_name = name_parts[0] if name_parts else "User"
+            last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
+            
             profile_data = {
                 "id": user_id,
-                "first_name": request.full_name.split()[0] if request.full_name else "User",
-                "last_name": " ".join(request.full_name.split()[1:]) if len(request.full_name.split()) > 1 else "",
-                "user_type": "STUDENT",
+                "first_name": first_name,
+                "last_name": last_name,
+                "user_type": "ADMIN" if request.is_admin else "STUDENT",
                 "account_status": "ACTIVE",
                 "email_verified": False
             }
             
             try:
-                supabase_admin.table("profiles").insert(profile_data).execute()
-                logger.info(f"Profile created manually for user {user_id}")
+                supabase.table("profiles").insert(profile_data).execute()
+                logger.info(f"Profile created manually for user {user_id} with admin status: {request.is_admin}")
             except Exception as e:
                 logger.error(f"Failed to create profile: {e}")
                 # Continue anyway as user is created in auth
+        else:
+            # Update existing profile with admin status if needed
+            if request.is_admin:
+                try:
+                    supabase.table("profiles").update({
+                        "user_type": "ADMIN"
+                    }).eq("id", user_id).execute()
+                    logger.info(f"Updated profile to admin for user {user_id}")
+                except Exception as e:
+                    logger.error(f"Failed to update profile to admin: {e}")
         
         # Return success regardless of session status
         return {
@@ -179,6 +208,7 @@ async def register(request: RegisterRequest):
             "message": "Registration successful! You can now log in.",
             "user_id": user_id,
             "email": request.email,
+            "is_admin": request.is_admin,
             "requires_confirmation": auth_response.session is None
         }
         
@@ -214,11 +244,18 @@ async def login(request: LoginRequest):
         
         if not profile_response.data:
             # Profile doesn't exist, create it
+            # Split full name from user metadata
+            full_name = auth_response.user.user_metadata.get("full_name", "User")
+            name_parts = full_name.strip().split()
+            first_name = name_parts[0] if name_parts else "User"
+            last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
+            is_admin = auth_response.user.user_metadata.get("is_admin", False)
+            
             profile_data = {
                 "id": auth_response.user.id,
-                "first_name": auth_response.user.user_metadata.get("full_name", "User").split()[0],
-                "last_name": " ".join(auth_response.user.user_metadata.get("full_name", "").split()[1:]) if len(auth_response.user.user_metadata.get("full_name", "").split()) > 1 else "",
-                "user_type": "STUDENT",
+                "first_name": first_name,
+                "last_name": last_name,
+                "user_type": "ADMIN" if is_admin else "STUDENT",
                 "account_status": "ACTIVE",
                 "email_verified": False
             }
@@ -236,6 +273,9 @@ async def login(request: LoginRequest):
         
         # Add email to profile data for the response
         profile_data["email"] = auth_response.user.email
+        
+        # Determine if user is admin based on user_type
+        profile_data["is_admin"] = profile_data.get("user_type") == "ADMIN"
         
         return LoginResponse(
             access_token=auth_response.session.access_token,
@@ -907,8 +947,8 @@ async def create_claim_request(claim: ClaimRequestCreate, current_user = Depends
 
 # Admin dependency
 async def get_admin_user(current_user = Depends(get_current_user)):
-    """Check if current user is admin"""
-    if not current_user.get("is_admin", False):
+    """Dependency to ensure user is an admin"""
+    if not current_user.get("user_type") == "ADMIN":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required"
@@ -1602,6 +1642,62 @@ async def bulk_admin_action(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error performing bulk action: {str(e)}"
+        )
+
+@api_router.delete("/admin/items/{item_id}")
+async def delete_item(
+    item_id: str,
+    admin_user = Depends(get_admin_user)
+):
+    """Delete an item (admin only)"""
+    try:
+        supabase = get_supabase_admin()
+        
+        # Get item details before deletion for logging
+        item_response = supabase.table("items").select("*").eq("id", item_id).execute()
+        if not item_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Item not found"
+            )
+        
+        item = item_response.data[0]
+        
+        # Delete the item
+        delete_response = supabase.table("items").delete().eq("id", item_id).execute()
+        
+        if not delete_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to delete item"
+            )
+        
+        # Log admin action
+        try:
+            supabase.table("admin_actions").insert({
+                "admin_id": admin_user["id"],
+                "action": "delete_item",
+                "content_type": "item",
+                "content_id": item_id,
+                "notes": f"Deleted item: {item.get('title', 'Unknown')}",
+                "created_at": datetime.utcnow().isoformat()
+            }).execute()
+        except Exception as e:
+            logger.warning(f"Failed to log admin action: {e}")
+        
+        return {
+            "success": True,
+            "message": "Item deleted successfully",
+            "deleted_item": item
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting item: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete item"
         )
 
 # Include router in app

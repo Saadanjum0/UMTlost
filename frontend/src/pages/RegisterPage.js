@@ -1,7 +1,7 @@
 import React, { useState, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { User, Mail, Lock, Eye, EyeOff, ArrowRight, Check } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, ArrowRight, Check, Shield } from 'lucide-react';
 import { UserContext } from '../App';
 import { authAPI } from '../services/api';
 
@@ -15,7 +15,8 @@ const RegisterPage = () => {
     email: '',
     password: '',
     confirmPassword: '',
-    agreeTerms: false
+    agreeTerms: false,
+    isAdmin: false
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -36,11 +37,17 @@ const RegisterPage = () => {
       const response = await authAPI.register({
         email: formData.email,
         password: formData.password,
-        full_name: `${formData.firstName} ${formData.lastName}`
+        full_name: `${formData.firstName} ${formData.lastName}`,
+        is_admin: formData.isAdmin
       });
       
-      setUser(response.user);
-      navigate('/dashboard');
+      // Registration successful - redirect to login
+      navigate('/login', { 
+        state: { 
+          message: 'Registration successful! Please log in with your credentials.',
+          email: formData.email 
+        }
+      });
     } catch (err) {
       console.error('Registration error:', err);
       
@@ -193,6 +200,50 @@ const RegisterPage = () => {
                       Must be a valid UMT email address
                     </p>
                   </div>
+
+                  {/* Account Type */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      Account Type
+                    </label>
+                    <div className="space-y-3">
+                      <label className="flex items-center p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                        <input
+                          type="radio"
+                          name="isAdmin"
+                          value={false}
+                          checked={!formData.isAdmin}
+                          onChange={() => setFormData({...formData, isAdmin: false})}
+                          className="text-blue-600 focus:ring-blue-500"
+                        />
+                        <div className="ml-3">
+                          <div className="flex items-center space-x-2">
+                            <User size={16} className="text-gray-600" />
+                            <span className="font-medium text-gray-900">Student/Faculty</span>
+                          </div>
+                          <p className="text-sm text-gray-600">Post and claim lost/found items</p>
+                        </div>
+                      </label>
+                      
+                      <label className="flex items-center p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                        <input
+                          type="radio"
+                          name="isAdmin"
+                          value={true}
+                          checked={formData.isAdmin}
+                          onChange={() => setFormData({...formData, isAdmin: true})}
+                          className="text-blue-600 focus:ring-blue-500"
+                        />
+                        <div className="ml-3">
+                          <div className="flex items-center space-x-2">
+                            <Shield size={16} className="text-blue-600" />
+                            <span className="font-medium text-gray-900">Administrator</span>
+                          </div>
+                          <p className="text-sm text-gray-600">Moderate content and manage users</p>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
                 </motion.div>
               )}
 
@@ -254,7 +305,7 @@ const RegisterPage = () => {
                       </button>
                     </div>
                     {formData.confirmPassword && formData.password !== formData.confirmPassword && (
-                      <p className="text-red-500 text-xs mt-1">Passwords do not match</p>
+                      <p className="text-red-500 text-sm mt-1">Passwords do not match</p>
                     )}
                   </div>
 
@@ -265,10 +316,10 @@ const RegisterPage = () => {
                       name="agreeTerms"
                       checked={formData.agreeTerms}
                       onChange={handleInputChange}
-                      className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      className="mt-1 text-blue-600 focus:ring-blue-500"
                       required
                     />
-                    <label className="text-sm text-gray-700">
+                    <label className="text-sm text-gray-600">
                       I agree to the{' '}
                       <Link to="/terms" className="text-blue-600 hover:text-blue-800">
                         Terms of Service
@@ -295,7 +346,7 @@ const RegisterPage = () => {
                   <button
                     type="button"
                     onClick={() => setStep(1)}
-                    className="btn-secondary flex-1"
+                    className="btn-ghost flex-1"
                   >
                     Back
                   </button>

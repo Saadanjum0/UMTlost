@@ -15,6 +15,7 @@ import BrowseFoundPage from './pages/BrowseFoundPage';
 import ItemDetailPage from './pages/ItemDetailPage';
 import DashboardPage from './pages/DashboardPage';
 import AdminDashboard from './pages/AdminDashboard';
+import { isAuthenticated, getCurrentUserFromStorage } from './services/api';
 
 // Mock data for demonstration
 const MOCK_ITEMS = [
@@ -110,17 +111,19 @@ const UserContext = React.createContext();
 function App() {
   const [user, setUser] = useState(null);
   const [items, setItems] = useState(MOCK_ITEMS);
+  const [loading, setLoading] = useState(true);
 
-  // Auto-login for demo purposes
+  // Check for existing authentication on app load
   useEffect(() => {
-    const demoUser = {
-      id: 1,
-      name: 'John Doe',
-      email: 'john.doe@umt.edu',
-      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face',
-      is_admin: true // Demo user has admin privileges
+    const checkAuth = () => {
+      if (isAuthenticated()) {
+        const userData = getCurrentUserFromStorage();
+        setUser(userData);
+      }
+      setLoading(false);
     };
-    setUser(demoUser);
+
+    checkAuth();
   }, []);
 
   const addItem = (newItem) => {
@@ -142,6 +145,20 @@ function App() {
     return children;
   };
 
+  // Show loading spinner while checking authentication
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <span className="text-white font-bold text-xl">L&F</span>
+          </div>
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <UserContext.Provider value={{ user, setUser, items, setItems, addItem }}>
       <div className="App min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
@@ -158,8 +175,8 @@ function App() {
                   <AdminDashboard />
                 </AdminRoute>
               } />
-              <Route path="/post-lost" element={user ? <PostLostPage /> : <Navigate to="/login" />} />
-              <Route path="/post-found" element={user ? <PostFoundPage /> : <Navigate to="/login" />} />
+              <Route path="/post-lost" element={user && !user.is_admin ? <PostLostPage /> : <Navigate to={user?.is_admin ? "/admin" : "/login"} />} />
+              <Route path="/post-found" element={user && !user.is_admin ? <PostFoundPage /> : <Navigate to={user?.is_admin ? "/admin" : "/login"} />} />
               <Route path="/lost-items" element={<BrowseLostPage />} />
               <Route path="/found-items" element={<BrowseFoundPage />} />
               <Route path="/item/:id" element={<ItemDetailPage />} />
