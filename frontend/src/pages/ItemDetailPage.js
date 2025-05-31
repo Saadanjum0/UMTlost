@@ -6,12 +6,16 @@ import {
   MessageCircle, CheckCircle, X, User, Mail, Phone, AlertTriangle
 } from 'lucide-react';
 import { UserContext } from '../App';
+import { itemsAPI } from '../services/api';
 import ImageWithFallback from '../components/ImageWithFallback';
 
 const ItemDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user, items } = useContext(UserContext);
+  const { user } = useContext(UserContext);
+  const [item, setItem] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [showClaimForm, setShowClaimForm] = useState(false);
   const [claimData, setClaimData] = useState({
     message: '',
@@ -20,14 +24,46 @@ const ItemDetailPage = () => {
   });
   const [showShareMenu, setShowShareMenu] = useState(false);
 
-  const item = items.find(i => i.id === parseInt(id));
+  // Fetch item data from API
+  useEffect(() => {
+    const fetchItem = async () => {
+      try {
+        setLoading(true);
+        setError('');
+        const response = await itemsAPI.getItem(id);
+        console.log('Fetched item data:', response); // Debug log
+        console.log('Current user:', user); // Debug log
+        setItem(response);
+      } catch (err) {
+        console.error('Error fetching item:', err);
+        setError('Item not found or failed to load');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  if (!item) {
+    if (id) {
+      fetchItem();
+    }
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen pt-20 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading item details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !item) {
     return (
       <div className="min-h-screen pt-20 flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-800 mb-2">Item not found</h1>
-          <p className="text-gray-600 mb-6">The item you're looking for doesn't exist.</p>
+          <p className="text-gray-600 mb-6">{error || "The item you're looking for doesn't exist."}</p>
           <Link to="/" className="btn-primary">
             Go Home
           </Link>
@@ -36,7 +72,22 @@ const ItemDetailPage = () => {
     );
   }
 
-  const isOwner = user?.email === item.contact;
+  // Improved ownership check - check multiple possible fields
+  const isOwner = user && item && (
+    user.email === item.owner_email || 
+    user.id === item.user_id ||
+    user.email === item.contact_info
+  );
+  
+  console.log('Ownership check:', {
+    userEmail: user?.email,
+    userId: user?.id,
+    itemOwnerEmail: item?.owner_email,
+    itemUserId: item?.user_id,
+    itemContactInfo: item?.contact_info,
+    isOwner
+  }); // Debug log
+  
   const isLostItem = item.type === 'lost';
 
   const handleClaimSubmit = (e) => {
@@ -83,11 +134,6 @@ const ItemDetailPage = () => {
     };
     return `px-3 py-1 rounded-full text-sm font-medium ${styles[condition] || styles.good}`;
   };
-
-  // Mock similar items
-  const similarItems = items
-    .filter(i => i.id !== item.id && i.category === item.category && i.type === item.type)
-    .slice(0, 3);
 
   return (
     <div className="min-h-screen pt-20 pb-12">
@@ -213,23 +259,23 @@ const ItemDetailPage = () => {
                         {isLostItem ? 'Date lost' : 'Date found'}
                       </div>
                       <div className="font-medium text-gray-800">
-                        {new Date(item.date).toLocaleDateString('en-US', {
+                        {item.date_lost ? new Date(item.date_lost).toLocaleDateString('en-US', {
                           weekday: 'long',
                           year: 'numeric',
                           month: 'long',
                           day: 'numeric'
-                        })}
+                        }) : 'Not specified'}
                       </div>
                     </div>
                   </div>
                 </div>
                 <div className="space-y-4">
-                  {item.time && (
+                  {item.time_lost && (
                     <div className="flex items-center space-x-3">
                       <Clock className="text-gray-400" size={20} />
                       <div>
                         <div className="text-sm text-gray-500">Approximate time</div>
-                        <div className="font-medium text-gray-800">{item.time}</div>
+                        <div className="font-medium text-gray-800">{item.time_lost}</div>
                       </div>
                     </div>
                   )}
@@ -254,39 +300,6 @@ const ItemDetailPage = () => {
                 </div>
               </div>
             </motion.div>
-
-            {/* Similar Items */}
-            {similarItems.length > 0 && (
-              <motion.div
-                className="card p-8"
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.2 }}
-              >
-                <h3 className="text-xl font-semibold text-gray-800 mb-6">
-                  Similar {isLostItem ? 'Lost' : 'Found'} Items
-                </h3>
-                <div className="grid md:grid-cols-3 gap-6">
-                  {similarItems.map((similarItem) => (
-                    <Link
-                      key={similarItem.id}
-                      to={`/item/${similarItem.id}`}
-                      className="group"
-                    >
-                      <ImageWithFallback
-                        src={similarItem.image}
-                        alt={similarItem.title}
-                        className="w-full h-32 object-cover rounded-lg mb-3 group-hover:scale-105 transition-transform duration-200"
-                      />
-                      <h4 className="font-medium text-gray-800 group-hover:text-blue-600 transition-colors duration-200">
-                        {similarItem.title}
-                      </h4>
-                      <p className="text-sm text-gray-500">{similarItem.location}</p>
-                    </Link>
-                  ))}
-                </div>
-              </motion.div>
-            )}
           </div>
 
           {/* Sidebar */}
@@ -309,18 +322,30 @@ const ItemDetailPage = () => {
                       <User size={16} />
                       <span className="text-sm font-medium">This is your item</span>
                     </div>
-                    <p className="text-sm text-blue-600">
-                      You can edit or manage this item from your dashboard.
+                    <p className="text-sm text-blue-600 mb-4">
+                      You posted this item. You can manage it from your dashboard.
                     </p>
                     <Link
                       to="/dashboard"
-                      className="btn-primary w-full mt-4"
+                      className="btn-primary w-full"
                     >
                       Go to Dashboard
                     </Link>
                   </div>
                 ) : user ? (
                   <div className="space-y-4">
+                    {/* Show item owner info */}
+                    <div className="p-3 bg-gray-50 rounded-lg mb-4">
+                      <div className="text-sm text-gray-600 mb-1">Posted by:</div>
+                      <div className="font-medium text-gray-800">
+                        {item.owner_name || 'Anonymous User'}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {new Date(item.created_at).toLocaleDateString()}
+                      </div>
+                    </div>
+
+                    {/* Action buttons for non-owners */}
                     {isLostItem ? (
                       <button
                         onClick={() => setShowClaimForm(true)}
@@ -341,11 +366,22 @@ const ItemDetailPage = () => {
                     
                     <button className="btn-secondary w-full flex items-center justify-center space-x-2">
                       <MessageCircle size={16} />
-                      <span>Send Message</span>
+                      <span>Contact Owner</span>
                     </button>
                   </div>
                 ) : (
                   <div className="p-4 bg-gray-50 rounded-lg">
+                    {/* Show item owner info for non-logged in users */}
+                    <div className="mb-4">
+                      <div className="text-sm text-gray-600 mb-1">Posted by:</div>
+                      <div className="font-medium text-gray-800">
+                        {item.owner_name || 'Anonymous User'}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {new Date(item.created_at).toLocaleDateString()}
+                      </div>
+                    </div>
+                    
                     <p className="text-sm text-gray-600 mb-4">
                       Sign in to contact the {isLostItem ? 'owner' : 'finder'} or claim this item.
                     </p>
@@ -353,7 +389,7 @@ const ItemDetailPage = () => {
                       to="/login"
                       className="btn-primary w-full"
                     >
-                      Sign In
+                      Sign In to Contact
                     </Link>
                   </div>
                 )}
