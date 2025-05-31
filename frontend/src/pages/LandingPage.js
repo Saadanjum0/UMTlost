@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Search, Plus, Users, Clock, CheckCircle, ArrowRight, MapPin, Shield, Smartphone, Star, TrendingUp } from 'lucide-react';
@@ -9,23 +9,7 @@ import ImageWithFallback from '../components/ImageWithFallback';
 const LandingPage = () => {
   const { user } = useContext(UserContext);
   const [searchQuery, setSearchQuery] = useState('');
-  const [recentFoundItems, setRecentFoundItems] = useState([]);
   const navigate = useNavigate();
-
-  // Fetch recent found items
-  useEffect(() => {
-    const fetchRecentItems = async () => {
-      try {
-        const response = await itemsAPI.getItems({ type: 'found' });
-        const foundItems = response.items || [];
-        setRecentFoundItems(foundItems.slice(0, 3)); // Get last 3 found items
-      } catch (error) {
-        console.error('Error fetching recent items:', error);
-      }
-    };
-
-    fetchRecentItems();
-  }, []);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -225,77 +209,6 @@ const LandingPage = () => {
           </motion.div>
         </div>
       </section>
-
-      {/* Recent Found Items */}
-      {recentFoundItems.length > 0 && (
-        <section className="py-20">
-          <div className="container-custom">
-            <motion.div
-              className="text-center mb-12"
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
-              viewport={{ once: true }}
-            >
-              <h2 className="text-4xl font-bold text-gray-800 mb-4">Recently Found Items</h2>
-              <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-                Check if your lost item has been found by fellow students
-              </p>
-            </motion.div>
-
-            <div className="grid md:grid-cols-3 gap-8">
-              {recentFoundItems.map((item, index) => (
-                <motion.div
-                  key={item.id}
-                  className="card card-hover p-6"
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: index * 0.1 }}
-                  viewport={{ once: true }}
-                >
-                  <ImageWithFallback
-                    src={item.image}
-                    alt={item.title}
-                    className="w-full h-48 object-cover rounded-xl mb-4"
-                  />
-                  <h3 className="text-xl font-semibold text-gray-800 mb-2">{item.title}</h3>
-                  <p className="text-gray-600 mb-3 line-clamp-2">{item.description}</p>
-                  <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
-                    <span className="flex items-center space-x-1">
-                      <MapPin size={14} />
-                      <span>{item.location}</span>
-                    </span>
-                    <span>{new Date(item.date).toLocaleDateString()}</span>
-                  </div>
-                  <Link
-                    to={`/item/${item.id}`}
-                    className="btn-primary w-full flex items-center justify-center space-x-2"
-                  >
-                    <span>View Details</span>
-                    <ArrowRight size={16} />
-                  </Link>
-                </motion.div>
-              ))}
-            </div>
-
-            <motion.div
-              className="text-center mt-12"
-              initial={{ opacity: 0 }}
-              whileInView={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-              viewport={{ once: true }}
-            >
-              <Link
-                to="/found-items"
-                className="btn-secondary inline-flex items-center space-x-2"
-              >
-                <span>View All Found Items</span>
-                <ArrowRight size={16} />
-              </Link>
-            </motion.div>
-          </div>
-        </section>
-      )}
 
       {/* Features Section */}
       <section className="py-20 bg-white/5 backdrop-blur-sm">
