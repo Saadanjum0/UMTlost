@@ -1,5 +1,5 @@
-import React, { useContext, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useContext } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Search, Plus, Users, Clock, CheckCircle, ArrowRight, MapPin, Shield, Smartphone, Star, TrendingUp } from 'lucide-react';
 import { UserContext } from '../App';
@@ -8,15 +8,6 @@ import ImageWithFallback from '../components/ImageWithFallback';
 
 const LandingPage = () => {
   const { user } = useContext(UserContext);
-  const [searchQuery, setSearchQuery] = useState('');
-  const navigate = useNavigate();
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/lost-items?search=${encodeURIComponent(searchQuery)}`);
-    }
-  };
 
   // Statistics
   const stats = [
@@ -85,7 +76,7 @@ const LandingPage = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
           >
-            <h1 className="text-5xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
+            <h1 className="text-5xl md:text-7xl font-bold mb-8 pb-2 bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
               Lost Something?
             </h1>
             <p className="text-xl md:text-2xl mb-8 text-gray-200 max-w-3xl mx-auto">
@@ -94,44 +85,15 @@ const LandingPage = () => {
             </p>
           </motion.div>
 
-          {/* Search Bar */}
-          <motion.form
-            onSubmit={handleSearch}
-            className="max-w-2xl mx-auto mb-8"
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-          >
-            <div className="relative glass-strong rounded-2xl p-2">
-              <div className="flex items-center">
-                <Search className="absolute left-6 text-gray-400" size={24} />
-                <input
-                  type="text"
-                  placeholder="Search for lost items (e.g., iPhone, wallet, keys...)"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-16 pr-32 py-4 bg-transparent text-white placeholder-gray-300 focus:outline-none text-lg"
-                />
-                <button
-                  type="submit"
-                  className="absolute right-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200 flex items-center space-x-2"
-                >
-                  <span>Search</span>
-                  <ArrowRight size={16} />
-                </button>
-              </div>
-            </div>
-          </motion.form>
-
           {/* Quick Actions */}
           <motion.div
-            className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6 mb-12"
+            className="flex justify-center mb-12"
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.4 }}
           >
             {user ? (
-              <>
+              <div className="flex items-center space-x-4">
                 <Link
                   to="/post-lost"
                   className="btn-secondary flex items-center space-x-2 text-lg px-8 py-4"
@@ -146,24 +108,15 @@ const LandingPage = () => {
                   <Plus size={20} />
                   <span>Report Found Item</span>
                 </Link>
-              </>
+              </div>
             ) : (
-              <>
-                <Link
-                  to="/register"
-                  className="btn-primary flex items-center space-x-2 text-lg px-8 py-4"
-                >
-                  <Users size={20} />
-                  <span>Join Now</span>
-                </Link>
-                <Link
-                  to="/lost-items"
-                  className="btn-secondary flex items-center space-x-2 text-lg px-8 py-4"
-                >
-                  <Search size={20} />
-                  <span>Browse Items</span>
-                </Link>
-              </>
+              <Link
+                to="/register"
+                className="btn-primary flex items-center space-x-2 text-lg px-12 py-4 text-center"
+              >
+                <Users size={20} />
+                <span>Join Now</span>
+              </Link>
             )}
           </motion.div>
         </div>
@@ -267,19 +220,12 @@ const LandingPage = () => {
               {!user && (
                 <Link
                   to="/register"
-                  className="btn-primary flex items-center space-x-2 text-lg px-8 py-4"
+                  className="btn-primary flex items-center space-x-2 text-lg px-12 py-4"
                 >
                   <Users size={20} />
                   <span>Get Started Free</span>
                 </Link>
               )}
-              <Link
-                to="/lost-items"
-                className="btn-secondary flex items-center space-x-2 text-lg px-8 py-4"
-              >
-                <Search size={20} />
-                <span>Browse Lost Items</span>
-              </Link>
             </div>
           </motion.div>
         </div>
