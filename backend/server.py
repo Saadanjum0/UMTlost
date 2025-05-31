@@ -349,26 +349,26 @@ async def get_items(
             """).eq("status", "ACTIVE")
             
             # Apply filters for lost items
-        if category:
+            if category:
                 # Get category ID first
                 cat_response = supabase.table("categories").select("id").eq("name", category.value.title()).execute()
                 if cat_response.data:
                     lost_query = lost_query.eq("category_id", cat_response.data[0]["id"])
             
-        if location:
+            if location:
                 # Get location ID first
                 loc_response = supabase.table("locations").select("id").ilike("name", f"%{location}%").execute()
                 if loc_response.data:
                     location_ids = [loc["id"] for loc in loc_response.data]
                     lost_query = lost_query.in_("location_id", location_ids)
             
-        if urgency:
+            if urgency:
                 lost_query = lost_query.eq("urgency", urgency.value.upper())
             
-        if has_reward:
+            if has_reward:
                 lost_query = lost_query.gt("reward_amount", 0) if has_reward else lost_query.eq("reward_amount", 0)
             
-        if search:
+            if search:
                 lost_query = lost_query.or_(f"title.ilike.%{search}%,description.ilike.%{search}%")
             
             lost_response = lost_query.execute()
@@ -735,7 +735,7 @@ async def upload_image(file: UploadFile = File(...), current_user = Depends(get_
         if file.content_type != "image/svg+xml":
             try:
                 # Reset file pointer for PIL
-            image = Image.open(io.BytesIO(content))
+                image = Image.open(io.BytesIO(content))
                 
                 # Convert to RGB if necessary (for JPEG compatibility)
                 if image.mode in ('RGBA', 'LA', 'P'):
@@ -755,11 +755,10 @@ async def upload_image(file: UploadFile = File(...), current_user = Depends(get_
                 image_format = 'JPEG' if file.content_type in ['image/jpeg', 'image/jpg'] else 'PNG'
                 image.save(output, format=image_format, quality=85, optimize=True)
                 content = output.getvalue()
-                
             except Exception as e:
                 logger.error(f"Image processing error: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Invalid or corrupted image file"
                 )
         
@@ -1059,7 +1058,7 @@ async def get_admin_stats(admin_user = Depends(get_admin_user)):
         # Get pending claims (if claim_requests table exists)
         pending_claims = 0
         try:
-        claims_response = supabase.table("claim_requests").select("status", count="exact").eq("status", "pending").execute()
+            claims_response = supabase.table("claim_requests").select("status", count="exact").eq("status", "pending").execute()
             pending_claims = claims_response.count or 0
         except Exception as e:
             logger.warning(f"Could not fetch claims: {e}")
@@ -1521,10 +1520,10 @@ async def moderate_item(
                 item = found_response.data[0]
                 table_name = "found_items"
             else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Item not found"
-            )
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Item not found"
+                )
         
         # Update item status based on action
         update_data = {
@@ -1559,13 +1558,13 @@ async def moderate_item(
         
         if action in notification_messages:
             try:
-            supabase.rpc("create_notification", {
-                "p_user_id": item["user_id"],
-                "p_title": f"Item {action.title()}d",
-                "p_message": notification_messages[action],
-                "p_type": f"item_{action}",
-                "p_related_item_id": item_id
-            }).execute()
+                supabase.rpc("create_notification", {
+                    "p_user_id": item["user_id"],
+                    "p_title": f"Item {action.title()}d",
+                    "p_message": notification_messages[action],
+                    "p_type": f"item_{action}",
+                    "p_related_item_id": item_id
+                }).execute()
             except Exception as e:
                 logger.warning(f"Failed to create notification: {e}")
         
