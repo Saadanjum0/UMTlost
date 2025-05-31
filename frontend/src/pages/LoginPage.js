@@ -41,8 +41,10 @@ const LoginPage = () => {
       
       setUser(response.user);
       
-      // Redirect based on user role
-      if (response.user.is_admin) {
+      // Redirect based on user role with explicit checks
+      const isAdmin = response.user.is_admin === true || response.user.user_type === 'ADMIN';
+      
+      if (isAdmin) {
         navigate('/admin');
       } else {
         navigate('/dashboard');

@@ -8,15 +8,19 @@ import uuid
 from datetime import datetime, date
 import os
 import aiofiles
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import io
 import time
 from pydantic import BaseModel
+from fastapi.responses import Response
 
 # Import our custom modules
 from config import settings
 from database import get_supabase, get_supabase_admin
 from models import *
+
+# API Configuration
+API_BASE_URL = "http://localhost:8000/api"
 
 # Setup logging
 logging.basicConfig(
@@ -158,16 +162,18 @@ async def register(request: RegisterRequest):
         if auth_response.user is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Registration failed"
+                detail="Registration failed. Please check your email and try again."
             )
         
         # Create profile manually if needed
         user_id = auth_response.user.id
         
         # Wait for trigger to complete and check if profile exists
-        time.sleep(0.5)
+        time.sleep(1.0)  # Increased wait time
         
-        profile_response = supabase.table("profiles").select("*").eq("id", user_id).execute()
+        # Use admin client to create profile
+        supabase_admin = get_supabase_admin()
+        profile_response = supabase_admin.table("profiles").select("*").eq("id", user_id).execute()
         
         if not profile_response.data:
             # Profile not created by trigger, create manually
@@ -186,8 +192,11 @@ async def register(request: RegisterRequest):
             }
             
             try:
-                supabase.table("profiles").insert(profile_data).execute()
-                logger.info(f"Profile created manually for user {user_id} with admin status: {request.is_admin}")
+                create_response = supabase_admin.table("profiles").insert(profile_data).execute()
+                if create_response.data:
+                    logger.info(f"Profile created manually for user {user_id} with admin status: {request.is_admin}")
+                else:
+                    logger.error(f"Failed to create profile for user {user_id}")
             except Exception as e:
                 logger.error(f"Failed to create profile: {e}")
                 # Continue anyway as user is created in auth
@@ -195,17 +204,23 @@ async def register(request: RegisterRequest):
             # Update existing profile with admin status if needed
             if request.is_admin:
                 try:
-                    supabase.table("profiles").update({
+                    supabase_admin.table("profiles").update({
                         "user_type": "ADMIN"
                     }).eq("id", user_id).execute()
                     logger.info(f"Updated profile to admin for user {user_id}")
                 except Exception as e:
                     logger.error(f"Failed to update profile to admin: {e}")
         
-        # Return success regardless of session status
+        # Sign out the user to ensure clean state for login
+        try:
+            supabase.auth.sign_out()
+        except Exception as e:
+            logger.warning(f"Failed to sign out after registration: {e}")
+        
+        # Return success response
         return {
             "success": True,
-            "message": "Registration successful! You can now log in.",
+            "message": "Registration successful! Please log in with your credentials.",
             "user_id": user_id,
             "email": request.email,
             "is_admin": request.is_admin,
@@ -228,15 +243,22 @@ async def login(request: LoginRequest):
         supabase = get_supabase()
         supabase_admin = get_supabase_admin()  # Use admin client for profile access
         
+        # Clear any existing session first
+        try:
+            supabase.auth.sign_out()
+        except Exception as e:
+            logger.debug(f"No existing session to clear: {e}")
+        
+        # Attempt login
         auth_response = supabase.auth.sign_in_with_password({
             "email": request.email,
             "password": request.password
         })
         
-        if auth_response.user is None:
+        if auth_response.user is None or auth_response.session is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid credentials"
+                detail="Invalid email or password. Please check your credentials and try again."
             )
         
         # Get user profile using admin client
@@ -257,16 +279,18 @@ async def login(request: LoginRequest):
                 "last_name": last_name,
                 "user_type": "ADMIN" if is_admin else "STUDENT",
                 "account_status": "ACTIVE",
-                "email_verified": False
+                "email_verified": auth_response.user.email_confirmed_at is not None
             }
             
             create_response = supabase_admin.table("profiles").insert(profile_data).execute()
             if create_response.data:
                 profile_data = create_response.data[0]
+                logger.info(f"Created missing profile for user {auth_response.user.id}")
             else:
+                logger.error(f"Failed to create profile for user {auth_response.user.id}")
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to create user profile"
+                    detail="Failed to create user profile. Please contact support."
                 )
         else:
             profile_data = profile_response.data[0]
@@ -276,6 +300,8 @@ async def login(request: LoginRequest):
         
         # Determine if user is admin based on user_type
         profile_data["is_admin"] = profile_data.get("user_type") == "ADMIN"
+        
+        logger.info(f"User {auth_response.user.email} logged in successfully (Admin: {profile_data['is_admin']})")
         
         return LoginResponse(
             access_token=auth_response.session.access_token,
@@ -288,7 +314,7 @@ async def login(request: LoginRequest):
         logger.error(f"Login error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Login failed. Please check your credentials."
+            detail="Login failed. Please check your credentials and try again."
         )
 
 @api_router.get("/auth/me", response_model=UserProfile)
@@ -323,26 +349,26 @@ async def get_items(
             """).eq("status", "ACTIVE")
             
             # Apply filters for lost items
-            if category:
+        if category:
                 # Get category ID first
                 cat_response = supabase.table("categories").select("id").eq("name", category.value.title()).execute()
                 if cat_response.data:
                     lost_query = lost_query.eq("category_id", cat_response.data[0]["id"])
             
-            if location:
+        if location:
                 # Get location ID first
                 loc_response = supabase.table("locations").select("id").ilike("name", f"%{location}%").execute()
                 if loc_response.data:
                     location_ids = [loc["id"] for loc in loc_response.data]
                     lost_query = lost_query.in_("location_id", location_ids)
             
-            if urgency:
+        if urgency:
                 lost_query = lost_query.eq("urgency", urgency.value.upper())
             
-            if has_reward:
+        if has_reward:
                 lost_query = lost_query.gt("reward_amount", 0) if has_reward else lost_query.eq("reward_amount", 0)
             
-            if search:
+        if search:
                 lost_query = lost_query.or_(f"title.ilike.%{search}%,description.ilike.%{search}%")
             
             lost_response = lost_query.execute()
@@ -357,8 +383,8 @@ async def get_items(
                     "description": item_data["description"],
                     "category": item_data["categories"]["name"].lower() if item_data.get("categories") else "other",
                     "location": item_data["locations"]["name"] if item_data.get("locations") else "Unknown",
-                    "images": [],  # Add image handling later
-                    "image": "/api/placeholder/400/300",  # Default placeholder image
+                    "images": item_data.get("images", []) or [],  # Get images from database
+                    "image": item_data.get("images", [None])[0] if item_data.get("images") else f"{API_BASE_URL}/placeholder/400x300",  # First image or placeholder
                     "reward": item_data.get("reward_amount", 0) or 0,
                     "urgency": item_data["urgency"].lower(),
                     "date_lost": item_data.get("date_lost"),
@@ -410,8 +436,8 @@ async def get_items(
                     "description": item_data["description"],
                     "category": item_data["categories"]["name"].lower() if item_data.get("categories") else "other",
                     "location": item_data["locations"]["name"] if item_data.get("locations") else "Unknown",
-                    "images": [],  # Add image handling later
-                    "image": "/api/placeholder/400/300",  # Default placeholder image
+                    "images": item_data.get("images", []) or [],  # Get images from database
+                    "image": item_data.get("images", [None])[0] if item_data.get("images") else f"{API_BASE_URL}/placeholder/400x300",  # First image or placeholder
                     "reward": 0,  # Found items don't have rewards
                     "urgency": "medium",  # Default urgency for found items
                     "date_lost": item_data.get("date_found"),  # Use date_found as date_lost for consistency
@@ -579,6 +605,10 @@ async def create_item(item: ItemCreate, current_user = Depends(get_current_user)
             item_data["current_location"] = item.location
             item_data["condition_notes"] = "Good condition"
         
+        # Add images to item data
+        if item.images:
+            item_data["images"] = item.images
+        
         logger.info(f"Attempting to insert into {table_name} with data: {item_data}")
         
         # Insert into the appropriate table
@@ -604,7 +634,7 @@ async def create_item(item: ItemCreate, current_user = Depends(get_current_user)
             "category": item.category.value,
             "location": item.location,
             "images": item.images or [],
-            "image": item.images[0] if item.images else "/api/placeholder/400/300",  # First image for display
+            "image": item.images[0] if item.images else f"{API_BASE_URL}/placeholder/400x300",  # Use actual API URL for placeholder
             "reward": created_item.get("reward_amount", 0) or 0,
             "urgency": created_item.get("urgency", "medium").lower() if item.type == ItemType.LOST else "medium",
             "date_lost": created_item.get(date_field),
@@ -705,7 +735,7 @@ async def upload_image(file: UploadFile = File(...), current_user = Depends(get_
         if file.content_type != "image/svg+xml":
             try:
                 # Reset file pointer for PIL
-                image = Image.open(io.BytesIO(content))
+            image = Image.open(io.BytesIO(content))
                 
                 # Convert to RGB if necessary (for JPEG compatibility)
                 if image.mode in ('RGBA', 'LA', 'P'):
@@ -728,8 +758,8 @@ async def upload_image(file: UploadFile = File(...), current_user = Depends(get_
                 
             except Exception as e:
                 logger.error(f"Image processing error: {str(e)}")
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Invalid or corrupted image file"
                 )
         
@@ -747,6 +777,12 @@ async def upload_image(file: UploadFile = File(...), current_user = Depends(get_
         supabase = get_supabase()
         
         try:
+            # First, try to create the bucket if it doesn't exist
+            try:
+                supabase.storage.create_bucket("item-images", {"public": True})
+            except Exception as bucket_error:
+                logger.info(f"Bucket creation failed (may already exist): {bucket_error}")
+            
             # Upload the file
             storage_response = supabase.storage.from_("item-images").upload(
                 filename, 
@@ -757,16 +793,30 @@ async def upload_image(file: UploadFile = File(...), current_user = Depends(get_
                 }
             )
             
-            # Check for upload errors - Supabase Python client returns different error format
-            if hasattr(storage_response, 'error') and storage_response.error:
-                logger.error(f"Supabase storage error: {storage_response.error}")
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Failed to upload image: {storage_response.error}"
-                )
+            logger.info(f"Storage response type: {type(storage_response)}, value: {storage_response}")
             
-            # Check if upload was successful by looking at the response
-            if not storage_response or (hasattr(storage_response, 'data') and not storage_response.data):
+            # Handle different response types from Supabase storage
+            if isinstance(storage_response, bool):
+                if not storage_response:
+                    # Upload failed, try with upsert=True
+                    filename = f"{current_user['id']}/{uuid.uuid4()}-{int(time.time())}.{file_extension}"
+                    storage_response = supabase.storage.from_("item-images").upload(
+                        filename, 
+                        content, 
+                        {
+                            "content-type": file.content_type,
+                            "upsert": True
+                        }
+                    )
+                    
+                    if not storage_response:
+                        # Fallback to local storage
+                        raise Exception("Supabase storage failed, using fallback")
+            elif hasattr(storage_response, 'error') and storage_response.error:
+                logger.error(f"Supabase storage error: {storage_response.error}")
+                # Fallback to local storage
+                raise Exception(f"Supabase storage error: {storage_response.error}")
+            elif hasattr(storage_response, 'data') and not storage_response.data:
                 # Try with upsert=True in case of filename conflict
                 filename = f"{current_user['id']}/{uuid.uuid4()}-{int(time.time())}.{file_extension}"
                 storage_response = supabase.storage.from_("item-images").upload(
@@ -780,31 +830,50 @@ async def upload_image(file: UploadFile = File(...), current_user = Depends(get_
                 
                 if hasattr(storage_response, 'error') and storage_response.error:
                     logger.error(f"Retry upload failed: {storage_response.error}")
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Failed to upload image after retry"
-                    )
+                    # Fallback to local storage
+                    raise Exception(f"Retry upload failed: {storage_response.error}")
             
+        except HTTPException:
+            raise
         except Exception as e:
-            logger.error(f"Storage upload error: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to upload image: {str(e)}"
-            )
+            logger.warning(f"Supabase storage failed: {str(e)}, using local fallback")
+            
+            # Fallback: Save to local uploads directory
+            uploads_dir = Path("uploads")
+            uploads_dir.mkdir(exist_ok=True)
+            
+            user_dir = uploads_dir / current_user['id']
+            user_dir.mkdir(exist_ok=True)
+            
+            local_filename = f"{uuid.uuid4()}.{file_extension}"
+            local_path = user_dir / local_filename
+            
+            # Save file locally
+            async with aiofiles.open(local_path, 'wb') as f:
+                await f.write(content)
+            
+            # Use local URL
+            filename = f"{current_user['id']}/{local_filename}"
+            logger.info(f"Saved image locally: {local_path}")
         
         # Get public URL - construct it manually for reliability
         try:
-            # Get the Supabase URL from settings
-            supabase_url = settings.supabase_url.rstrip('/')
-            public_url = f"{supabase_url}/storage/v1/object/public/item-images/{filename}"
-            
-            # Verify the URL is accessible (optional - can be removed if causing issues)
-            logger.info(f"Generated public URL: {public_url}")
+            # Check if we're using local storage (fallback)
+            local_uploads_path = Path("uploads") / filename
+            if local_uploads_path.exists():
+                # Use local API endpoint
+                public_url = f"{API_BASE_URL}/uploads/{filename}"
+                logger.info(f"Using local image URL: {public_url}")
+            else:
+                # Get the Supabase URL from settings
+                supabase_url = settings.supabase_url.rstrip('/')
+                public_url = f"{supabase_url}/storage/v1/object/public/item-images/{filename}"
+                logger.info(f"Using Supabase image URL: {public_url}")
             
         except Exception as e:
             logger.error(f"Error generating public URL: {str(e)}")
             # Fallback URL construction
-            public_url = f"https://eulbutktbvfwkvfowlel.supabase.co/storage/v1/object/public/item-images/{filename}"
+            public_url = f"{API_BASE_URL}/uploads/{filename}"
         
         logger.info(f"Successfully uploaded image: {filename} -> {public_url}")
         
@@ -971,19 +1040,32 @@ async def get_admin_stats(admin_user = Depends(get_admin_user)):
         
         # Get user count
         users_response = supabase.table("profiles").select("id", count="exact").execute()
-        total_users = users_response.count
+        total_users = users_response.count or 0
         
-        # Get items count by status
-        items_response = supabase.table("items").select("status", count="exact").execute()
-        active_items = len([item for item in items_response.data if item["status"] == "active"])
-        resolved_items = len([item for item in items_response.data if item["status"] == "resolved"])
+        # Get items count from both tables
+        lost_items_response = supabase.table("lost_items").select("status", count="exact").execute()
+        found_items_response = supabase.table("found_items").select("status", count="exact").execute()
         
-        # Get pending claims
+        # Count active items
+        active_lost = len([item for item in lost_items_response.data if item.get("status") == "ACTIVE"])
+        active_found = len([item for item in found_items_response.data if item.get("status") == "AVAILABLE"])
+        active_items = active_lost + active_found
+        
+        # Count resolved items
+        resolved_lost = len([item for item in lost_items_response.data if item.get("status") == "RESOLVED"])
+        resolved_found = len([item for item in found_items_response.data if item.get("status") == "CLAIMED"])
+        resolved_items = resolved_lost + resolved_found
+        
+        # Get pending claims (if claim_requests table exists)
+        pending_claims = 0
+        try:
         claims_response = supabase.table("claim_requests").select("status", count="exact").eq("status", "pending").execute()
-        pending_claims = claims_response.count
+            pending_claims = claims_response.count or 0
+        except Exception as e:
+            logger.warning(f"Could not fetch claims: {e}")
         
         # Calculate success rate
-        total_items = len(items_response.data)
+        total_items = len(lost_items_response.data) + len(found_items_response.data)
         success_rate = (resolved_items / total_items * 100) if total_items > 0 else 0
         
         return {
@@ -1013,33 +1095,98 @@ async def get_admin_items(
     """Get all items for admin review"""
     try:
         supabase = get_supabase_admin()
+        all_items = []
         
-        query = supabase.table("items").select("""
+        # Fetch from lost_items table
+        lost_query = supabase.table("lost_items").select("""
             *,
-            profiles!items_user_id_fkey(first_name, last_name, email)
+            categories!lost_items_category_id_fkey(name),
+            locations!lost_items_location_id_fkey(name),
+            profiles!lost_items_user_id_fkey(first_name, last_name, email)
         """)
         
         if status:
-            query = query.eq("status", status)
+            lost_query = lost_query.eq("status", status.upper())
+        
+        lost_response = lost_query.execute()
+        
+        # Transform lost items
+        for item_data in lost_response.data:
+            unified_item = {
+                "id": item_data["id"],
+                "type": "lost",
+                "user_id": item_data["user_id"],
+                "title": item_data["title"],
+                "description": item_data["description"],
+                "category": item_data["categories"]["name"].lower() if item_data.get("categories") else "other",
+                "location": item_data["locations"]["name"] if item_data.get("locations") else "Unknown",
+                "status": item_data["status"].lower(),
+                "urgency": item_data.get("urgency", "medium").lower(),
+                "created_at": item_data["created_at"],
+                "updated_at": item_data["updated_at"],
+                "owner_name": get_full_name_from_profile(item_data.get("profiles")),
+                "owner_email": item_data["profiles"]["email"] if item_data.get("profiles") else "Unknown",
+                "flagged": item_data.get("flagged", False),
+                "flag_reason": item_data.get("flag_reason"),
+                "moderation_notes": item_data.get("moderation_notes"),
+                "moderated_by": item_data.get("moderated_by"),
+                "moderated_at": item_data.get("moderated_at"),
+                "table_name": "lost_items"  # Add this to track which table
+            }
+            all_items.append(unified_item)
+        
+        # Fetch from found_items table
+        found_query = supabase.table("found_items").select("""
+            *,
+            categories!found_items_category_id_fkey(name),
+            locations!found_items_location_id_fkey(name),
+            profiles!found_items_user_id_fkey(first_name, last_name, email)
+        """)
+        
+        if status:
+            # Map status for found items
+            found_status = "AVAILABLE" if status.lower() == "active" else status.upper()
+            found_query = found_query.eq("status", found_status)
+        
+        found_response = found_query.execute()
+        
+        # Transform found items
+        for item_data in found_response.data:
+            unified_item = {
+                "id": item_data["id"],
+                "type": "found",
+                "user_id": item_data["user_id"],
+                "title": item_data["title"],
+                "description": item_data["description"],
+                "category": item_data["categories"]["name"].lower() if item_data.get("categories") else "other",
+                "location": item_data["locations"]["name"] if item_data.get("locations") else "Unknown",
+                "status": "active" if item_data["status"].lower() == "available" else item_data["status"].lower(),
+                "urgency": "medium",  # Default for found items
+                "created_at": item_data["created_at"],
+                "updated_at": item_data["updated_at"],
+                "owner_name": get_full_name_from_profile(item_data.get("profiles")),
+                "owner_email": item_data["profiles"]["email"] if item_data.get("profiles") else "Unknown",
+                "flagged": item_data.get("flagged", False),
+                "flag_reason": item_data.get("flag_reason"),
+                "moderation_notes": item_data.get("moderation_notes"),
+                "moderated_by": item_data.get("moderated_by"),
+                "moderated_at": item_data.get("moderated_at"),
+                "table_name": "found_items"  # Add this to track which table
+            }
+            all_items.append(unified_item)
+        
+        # Sort by created_at (newest first)
+        all_items.sort(key=lambda x: x["created_at"], reverse=True)
         
         # Apply pagination
-        offset = (page - 1) * per_page
-        query = query.order("created_at", desc=True).range(offset, offset + per_page - 1)
-        
-        response = query.execute()
-        
-        # Transform data
-        items = []
-        for item_data in response.data:
-            item_dict = item_data.copy()
-            if item_data.get("profiles"):
-                item_dict["owner_name"] = get_full_name_from_profile(item_data["profiles"])
-                item_dict["owner_email"] = item_data["profiles"]["email"]
-                del item_dict["profiles"]
-            items.append(item_dict)
+        total = len(all_items)
+        start = (page - 1) * per_page
+        end = start + per_page
+        paginated_items = all_items[start:end]
         
         return {
-            "items": items,
+            "items": paginated_items,
+            "total": total,
             "page": page,
             "per_page": per_page
         }
@@ -1358,15 +1505,26 @@ async def moderate_item(
     try:
         supabase = get_supabase_admin()
         
-        # Get current item
-        item_response = supabase.table("items").select("*").eq("id", item_id).execute()
-        if not item_response.data:
+        # First, try to find the item in lost_items table
+        lost_response = supabase.table("lost_items").select("*").eq("id", item_id).execute()
+        
+        if lost_response.data:
+            # Item found in lost_items table
+            item = lost_response.data[0]
+            table_name = "lost_items"
+        else:
+            # Try found_items table
+            found_response = supabase.table("found_items").select("*").eq("id", item_id).execute()
+            
+            if found_response.data:
+                # Item found in found_items table
+                item = found_response.data[0]
+                table_name = "found_items"
+            else:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Item not found"
             )
-        
-        item = item_response.data[0]
         
         # Update item status based on action
         update_data = {
@@ -1377,16 +1535,19 @@ async def moderate_item(
         }
         
         if action == "approve":
-            update_data["status"] = "active"
+            if table_name == "lost_items":
+                update_data["status"] = "ACTIVE"
+            else:  # found_items
+                update_data["status"] = "AVAILABLE"
         elif action == "reject":
-            update_data["status"] = "rejected"
+            update_data["status"] = "REJECTED"
         elif action == "archive":
-            update_data["status"] = "archived"
+            update_data["status"] = "ARCHIVED"
         elif action == "flag":
             update_data["flagged"] = True
             update_data["flag_reason"] = note
         
-        response = supabase.table("items").update(update_data).eq("id", item_id).execute()
+        response = supabase.table(table_name).update(update_data).eq("id", item_id).execute()
         
         # Create notification for item owner
         notification_messages = {
@@ -1397,6 +1558,7 @@ async def moderate_item(
         }
         
         if action in notification_messages:
+            try:
             supabase.rpc("create_notification", {
                 "p_user_id": item["user_id"],
                 "p_title": f"Item {action.title()}d",
@@ -1404,8 +1566,10 @@ async def moderate_item(
                 "p_type": f"item_{action}",
                 "p_related_item_id": item_id
             }).execute()
+            except Exception as e:
+                logger.warning(f"Failed to create notification: {e}")
         
-        return response.data[0]
+        return response.data[0] if response.data else {"success": True}
         
     except HTTPException:
         raise
@@ -1660,18 +1824,32 @@ async def delete_item(
     try:
         supabase = get_supabase_admin()
         
-        # Get item details before deletion for logging
-        item_response = supabase.table("items").select("*").eq("id", item_id).execute()
-        if not item_response.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Item not found"
-            )
+        # First, try to find the item in lost_items table
+        lost_response = supabase.table("lost_items").select("*").eq("id", item_id).execute()
         
-        item = item_response.data[0]
-        
-        # Delete the item
-        delete_response = supabase.table("items").delete().eq("id", item_id).execute()
+        if lost_response.data:
+            # Item found in lost_items table
+            item = lost_response.data[0]
+            table_name = "lost_items"
+            
+            # Delete from lost_items
+            delete_response = supabase.table("lost_items").delete().eq("id", item_id).execute()
+        else:
+            # Try found_items table
+            found_response = supabase.table("found_items").select("*").eq("id", item_id).execute()
+            
+            if found_response.data:
+                # Item found in found_items table
+                item = found_response.data[0]
+                table_name = "found_items"
+                
+                # Delete from found_items
+                delete_response = supabase.table("found_items").delete().eq("id", item_id).execute()
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Item not found"
+                )
         
         if not delete_response.data:
             raise HTTPException(
@@ -1686,7 +1864,7 @@ async def delete_item(
                 "action": "delete_item",
                 "content_type": "item",
                 "content_id": item_id,
-                "notes": f"Deleted item: {item.get('title', 'Unknown')}",
+                "notes": f"Deleted {table_name} item: {item.get('title', 'Unknown')}",
                 "created_at": datetime.utcnow().isoformat()
             }).execute()
         except Exception as e:
@@ -1695,7 +1873,8 @@ async def delete_item(
         return {
             "success": True,
             "message": "Item deleted successfully",
-            "deleted_item": item
+            "deleted_item": item,
+            "table": table_name
         }
         
     except HTTPException:
@@ -1705,6 +1884,104 @@ async def delete_item(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete item"
+        )
+
+# Add this endpoint before the existing endpoints
+@api_router.get("/placeholder/{width}x{height}")
+async def get_placeholder_image(width: int, height: int):
+    """Generate a placeholder image"""
+    try:
+        # Limit size to prevent abuse
+        width = min(max(width, 50), 1200)
+        height = min(max(height, 50), 1200)
+        
+        # Create image
+        img = Image.new('RGB', (width, height), color='#f3f4f6')
+        draw = ImageDraw.Draw(img)
+        
+        # Add text
+        text = f"{width}×{height}"
+        try:
+            # Try to use a default font
+            font = ImageFont.load_default()
+        except:
+            font = None
+        
+        # Calculate text position
+        if font:
+            bbox = draw.textbbox((0, 0), text, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+        else:
+            text_width = len(text) * 6
+            text_height = 11
+        
+        x = (width - text_width) // 2
+        y = (height - text_height) // 2
+        
+        draw.text((x, y), text, fill='#9ca3af', font=font)
+        
+        # Save to bytes
+        img_bytes = io.BytesIO()
+        img.save(img_bytes, format='PNG')
+        img_bytes.seek(0)
+        
+        return Response(content=img_bytes.getvalue(), media_type="image/png")
+        
+    except Exception as e:
+        logger.error(f"Error generating placeholder: {e}")
+        # Return a simple response
+        return Response(content=b'', media_type="image/png")
+
+@api_router.get("/uploads/{file_path:path}")
+async def serve_uploaded_image(file_path: str):
+    """Serve locally uploaded images"""
+    try:
+        # Construct the full path
+        uploads_dir = Path("uploads")
+        full_path = uploads_dir / file_path
+        
+        # Security check: ensure the path is within uploads directory
+        if not str(full_path.resolve()).startswith(str(uploads_dir.resolve())):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+        
+        # Check if file exists
+        if not full_path.exists() or not full_path.is_file():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Image not found"
+            )
+        
+        # Determine content type based on file extension
+        file_extension = full_path.suffix.lower()
+        content_type_map = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp',
+            '.bmp': 'image/bmp',
+            '.tiff': 'image/tiff',
+            '.svg': 'image/svg+xml'
+        }
+        content_type = content_type_map.get(file_extension, 'application/octet-stream')
+        
+        # Read and return the file
+        async with aiofiles.open(full_path, 'rb') as f:
+            content = await f.read()
+        
+        return Response(content=content, media_type=content_type)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error serving image: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error serving image"
         )
 
 # Include router in app

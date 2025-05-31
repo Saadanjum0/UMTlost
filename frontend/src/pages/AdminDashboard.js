@@ -186,15 +186,15 @@ const AdminDashboard = () => {
       });
       
       // Update local state
-      setItems(prev => prev.map(item => 
-        item.id === itemId 
-          ? { ...item, status: action === 'approve' ? 'active' : action === 'reject' ? 'archived' : action }
-          : item
-      ));
-      
-      // Close any modals
-      setSelectedItem(null);
-      setModerationNote('');
+    setItems(prev => prev.map(item => 
+      item.id === itemId 
+        ? { ...item, status: action === 'approve' ? 'active' : action === 'reject' ? 'archived' : action }
+        : item
+    ));
+    
+    // Close any modals
+    setSelectedItem(null);
+    setModerationNote('');
       
       // Reload data
       await loadData();
@@ -212,11 +212,11 @@ const AdminDashboard = () => {
       });
       
       // Update local state
-      setClaims(prev => prev.map(claim =>
-        claim.id === claimId
-          ? { ...claim, status: action }
-          : claim
-      ));
+    setClaims(prev => prev.map(claim =>
+      claim.id === claimId
+        ? { ...claim, status: action }
+        : claim
+    ));
       
       // Reload data
       await loadData();
@@ -442,7 +442,7 @@ const AdminDashboard = () => {
             <div>
               <h1 className="text-4xl font-bold text-gray-800 mb-2">Admin Dashboard</h1>
               <p className="text-gray-600">Manage and monitor the Lost & Found Portal</p>
-            </div>
+                </div>
             <div className="flex items-center space-x-2">
               <Shield className="text-blue-600" size={24} />
               <span className="text-lg font-medium text-gray-700">Administrator</span>
@@ -614,38 +614,38 @@ const AdminDashboard = () => {
                 >
                   <Activity size={16} />
                   <span>Refresh</span>
-                </button>
-              </div>
+                  </button>
+                </div>
               
               {loading ? (
                 <div className="flex justify-center py-8">
                   <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                </div>
+              </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Urgency</th>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Urgency</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
                       {items.map((item) => (
                         <ItemRow key={item.id} item={item} />
                       ))}
-                    </tbody>
-                  </table>
+                  </tbody>
+                </table>
                   
                   {items.length === 0 && (
                     <div className="text-center py-8 text-gray-500">
                       No items found
-                    </div>
+              </div>
                   )}
                 </div>
               )}
@@ -665,7 +665,7 @@ const AdminDashboard = () => {
                   <Activity size={16} />
                   <span>Refresh</span>
                 </button>
-              </div>
+                  </div>
               
               {loading ? (
                 <div className="flex justify-center py-8">
@@ -681,8 +681,8 @@ const AdminDashboard = () => {
                           <p className="text-sm text-gray-600 mt-1">{claim.message}</p>
                           <div className="text-xs text-gray-500 mt-2">
                             Claimed by {claim.claimer_name} • {new Date(claim.created_at).toLocaleDateString()}
-                          </div>
-                        </div>
+              </div>
+              </div>
                         <div className="flex space-x-2 ml-4">
                           <button
                             onClick={() => handleClaimAction(claim.id, 'approved')}
@@ -698,15 +698,15 @@ const AdminDashboard = () => {
                             <XCircle size={14} className="mr-1" />
                             Reject
                           </button>
-                        </div>
-                      </div>
-                    </div>
+            </div>
+                </div>
+              </div>
                   ))}
                   
                   {claims.length === 0 && (
                     <div className="text-center py-8 text-gray-500">
                       No pending claims found
-                    </div>
+                </div>
                   )}
                 </div>
               )}
@@ -721,7 +721,7 @@ const AdminDashboard = () => {
               {loading ? (
                 <div className="flex justify-center py-8">
                   <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                </div>
+                        </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
@@ -741,9 +741,9 @@ const AdminDashboard = () => {
                             <div>
                               <div className="text-sm font-medium text-gray-900">
                                 {user.first_name} {user.last_name}
-                              </div>
+                        </div>
                               <div className="text-sm text-gray-500">{user.email}</div>
-                            </div>
+                      </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -763,7 +763,7 @@ const AdminDashboard = () => {
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                             <button className="text-blue-600 hover:text-blue-900">
                               View Details
-                            </button>
+                        </button>
                           </td>
                         </tr>
                       ))}
@@ -773,7 +773,7 @@ const AdminDashboard = () => {
                   {users.length === 0 && (
                     <div className="text-center py-8 text-gray-500">
                       No users found
-                    </div>
+              </div>
                   )}
                 </div>
               )}
