@@ -1,5 +1,5 @@
-import React, { useContext, useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useContext } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Search, Plus, Users, Clock, CheckCircle, ArrowRight, MapPin, Shield, Smartphone, Star, TrendingUp } from 'lucide-react';
 import { UserContext } from '../App';
@@ -8,31 +8,6 @@ import ImageWithFallback from '../components/ImageWithFallback';
 
 const LandingPage = () => {
   const { user } = useContext(UserContext);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [recentFoundItems, setRecentFoundItems] = useState([]);
-  const navigate = useNavigate();
-
-  // Fetch recent found items
-  useEffect(() => {
-    const fetchRecentItems = async () => {
-      try {
-        const response = await itemsAPI.getItems({ type: 'found' });
-        const foundItems = response.items || [];
-        setRecentFoundItems(foundItems.slice(0, 3)); // Get last 3 found items
-      } catch (error) {
-        console.error('Error fetching recent items:', error);
-      }
-    };
-
-    fetchRecentItems();
-  }, []);
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/lost-items?search=${encodeURIComponent(searchQuery)}`);
-    }
-  };
 
   // Statistics
   const stats = [
@@ -101,7 +76,7 @@ const LandingPage = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
           >
-            <h1 className="text-5xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
+            <h1 className="text-5xl md:text-7xl font-bold mb-8 pb-2 bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
               Lost Something?
             </h1>
             <p className="text-xl md:text-2xl mb-8 text-gray-200 max-w-3xl mx-auto">
@@ -110,44 +85,15 @@ const LandingPage = () => {
             </p>
           </motion.div>
 
-          {/* Search Bar */}
-          <motion.form
-            onSubmit={handleSearch}
-            className="max-w-2xl mx-auto mb-8"
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-          >
-            <div className="relative glass-strong rounded-2xl p-2">
-              <div className="flex items-center">
-                <Search className="absolute left-6 text-gray-400" size={24} />
-                <input
-                  type="text"
-                  placeholder="Search for lost items (e.g., iPhone, wallet, keys...)"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-16 pr-32 py-4 bg-transparent text-white placeholder-gray-300 focus:outline-none text-lg"
-                />
-                <button
-                  type="submit"
-                  className="absolute right-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200 flex items-center space-x-2"
-                >
-                  <span>Search</span>
-                  <ArrowRight size={16} />
-                </button>
-              </div>
-            </div>
-          </motion.form>
-
           {/* Quick Actions */}
           <motion.div
-            className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6 mb-12"
+            className="flex justify-center mb-12"
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.4 }}
           >
             {user ? (
-              <>
+              <div className="flex items-center space-x-4">
                 <Link
                   to="/post-lost"
                   className="btn-secondary flex items-center space-x-2 text-lg px-8 py-4"
@@ -162,24 +108,15 @@ const LandingPage = () => {
                   <Plus size={20} />
                   <span>Report Found Item</span>
                 </Link>
-              </>
+              </div>
             ) : (
-              <>
-                <Link
-                  to="/register"
-                  className="btn-primary flex items-center space-x-2 text-lg px-8 py-4"
-                >
-                  <Users size={20} />
-                  <span>Join Now</span>
-                </Link>
-                <Link
-                  to="/lost-items"
-                  className="btn-secondary flex items-center space-x-2 text-lg px-8 py-4"
-                >
-                  <Search size={20} />
-                  <span>Browse Items</span>
-                </Link>
-              </>
+              <Link
+                to="/register"
+                className="btn-primary flex items-center space-x-2 text-lg px-12 py-4 text-center"
+              >
+                <Users size={20} />
+                <span>Join Now</span>
+              </Link>
             )}
           </motion.div>
         </div>
@@ -225,77 +162,6 @@ const LandingPage = () => {
           </motion.div>
         </div>
       </section>
-
-      {/* Recent Found Items */}
-      {recentFoundItems.length > 0 && (
-        <section className="py-20">
-          <div className="container-custom">
-            <motion.div
-              className="text-center mb-12"
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
-              viewport={{ once: true }}
-            >
-              <h2 className="text-4xl font-bold text-gray-800 mb-4">Recently Found Items</h2>
-              <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-                Check if your lost item has been found by fellow students
-              </p>
-            </motion.div>
-
-            <div className="grid md:grid-cols-3 gap-8">
-              {recentFoundItems.map((item, index) => (
-                <motion.div
-                  key={item.id}
-                  className="card card-hover p-6"
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: index * 0.1 }}
-                  viewport={{ once: true }}
-                >
-                  <ImageWithFallback
-                    src={item.image}
-                    alt={item.title}
-                    className="w-full h-48 object-cover rounded-xl mb-4"
-                  />
-                  <h3 className="text-xl font-semibold text-gray-800 mb-2">{item.title}</h3>
-                  <p className="text-gray-600 mb-3 line-clamp-2">{item.description}</p>
-                  <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
-                    <span className="flex items-center space-x-1">
-                      <MapPin size={14} />
-                      <span>{item.location}</span>
-                    </span>
-                    <span>{new Date(item.date).toLocaleDateString()}</span>
-                  </div>
-                  <Link
-                    to={`/item/${item.id}`}
-                    className="btn-primary w-full flex items-center justify-center space-x-2"
-                  >
-                    <span>View Details</span>
-                    <ArrowRight size={16} />
-                  </Link>
-                </motion.div>
-              ))}
-            </div>
-
-            <motion.div
-              className="text-center mt-12"
-              initial={{ opacity: 0 }}
-              whileInView={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-              viewport={{ once: true }}
-            >
-              <Link
-                to="/found-items"
-                className="btn-secondary inline-flex items-center space-x-2"
-              >
-                <span>View All Found Items</span>
-                <ArrowRight size={16} />
-              </Link>
-            </motion.div>
-          </div>
-        </section>
-      )}
 
       {/* Features Section */}
       <section className="py-20 bg-white/5 backdrop-blur-sm">
@@ -354,19 +220,12 @@ const LandingPage = () => {
               {!user && (
                 <Link
                   to="/register"
-                  className="btn-primary flex items-center space-x-2 text-lg px-8 py-4"
+                  className="btn-primary flex items-center space-x-2 text-lg px-12 py-4"
                 >
                   <Users size={20} />
                   <span>Get Started Free</span>
                 </Link>
               )}
-              <Link
-                to="/lost-items"
-                className="btn-secondary flex items-center space-x-2 text-lg px-8 py-4"
-              >
-                <Search size={20} />
-                <span>Browse Lost Items</span>
-              </Link>
             </div>
           </motion.div>
         </div>

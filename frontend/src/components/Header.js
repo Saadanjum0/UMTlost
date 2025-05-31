@@ -52,53 +52,56 @@ const Header = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden lg:flex items-center space-x-8">
-            <nav className="flex items-center space-x-6">
-              <Link to="/lost-items" className="nav-link">
-                Lost Items
-              </Link>
-              <Link to="/found-items" className="nav-link">
-                Found Items
-              </Link>
-              {user && !user.is_admin && (
-                <>
-                  <Link to="/messages" className="nav-link">
-                    Messages
-                  </Link>
-                  <Link to="/post-lost" className="nav-link">
-                    Post Lost
-                  </Link>
-                  <Link to="/post-found" className="nav-link">
-                    Post Found
-                  </Link>
-                </>
-              )}
-            </nav>
-
-            {/* Search Bar */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-              <input
-                type="text"
-                placeholder="Search items..."
-                className="w-64 pl-10 pr-4 py-2 bg-white/80 backdrop-blur-sm border border-white/30 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            {/* User Menu */}
             {user ? (
               <>
+                <nav className="flex items-center space-x-6">
+                  <Link 
+                    to="/lost-items" 
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
+                  >
+                    Lost Items
+                  </Link>
+                  <Link 
+                    to="/found-items" 
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
+                  >
+                    Found Items
+                  </Link>
+                  {!user.is_admin && (
+                    <>
+                      <Link to="/post-lost" className="nav-link hover:text-blue-600 transition-colors duration-200">
+                        Post Lost
+                      </Link>
+                      <Link to="/post-found" className="nav-link hover:text-blue-600 transition-colors duration-200">
+                        Post Found
+                      </Link>
+                    </>
+                  )}
+                </nav>
+
+                {/* Search Bar */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                  <input
+                    type="text"
+                    placeholder="Search items..."
+                    className="w-64 pl-10 pr-4 py-2 bg-white/80 backdrop-blur-sm border border-white/30 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* User Menu */}
                 {!user.is_admin && (
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-3">
                     <Link
                       to="/post-lost"
-                      className="btn-ghost flex items-center space-x-1"
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 flex items-center space-x-2"
                     >
                       <Plus size={16} />
                       <span>Post Lost</span>
                     </Link>
                     <Link
                       to="/post-found"
-                      className="btn-primary flex items-center space-x-1"
+                      className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 border border-transparent rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 flex items-center space-x-2 shadow-md hover:shadow-lg"
                     >
                       <Plus size={16} />
                       <span>Post Found</span>
@@ -153,11 +156,17 @@ const Header = () => {
                 </div>
               </>
             ) : (
-              <div className="flex items-center space-x-4">
-                <Link to="/login" className="btn-ghost">
+              <div className="flex items-center space-x-3">
+                <Link 
+                  to="/login" 
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
+                >
                   Login
                 </Link>
-                <Link to="/register" className="btn-primary">
+                <Link 
+                  to="/register" 
+                  className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 border border-transparent rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg"
+                >
                   Sign Up
                 </Link>
               </div>
@@ -183,54 +192,61 @@ const Header = () => {
           >
             <div className="p-4 space-y-4">
               {/* Search Bar Mobile */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                <input
-                  type="text"
-                  placeholder="Search items..."
-                  className="w-full pl-10 pr-4 py-2 bg-white/80 backdrop-blur-sm border border-white/30 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
+              {user && (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                  <input
+                    type="text"
+                    placeholder="Search items..."
+                    className="w-full pl-10 pr-4 py-2 bg-white/80 backdrop-blur-sm border border-white/30 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              )}
 
               {/* Navigation Links */}
               <div className="space-y-2">
-                <Link
-                  to="/lost-items"
-                  onClick={() => setIsMenuOpen(false)}
-                  className="block py-2 text-gray-700 hover:text-blue-600"
-                >
-                  Lost Items
-                </Link>
-                <Link
-                  to="/found-items"
-                  onClick={() => setIsMenuOpen(false)}
-                  className="block py-2 text-gray-700 hover:text-blue-600"
-                >
-                  Found Items
-                </Link>
-                {user && !user.is_admin && (
+                {user && (
                   <>
                     <Link
-                      to="/messages"
+                      to="/lost-items"
                       onClick={() => setIsMenuOpen(false)}
                       className="block py-2 text-gray-700 hover:text-blue-600"
                     >
-                      Messages
+                      Lost Items
                     </Link>
                     <Link
-                      to="/post-lost"
+                      to="/found-items"
                       onClick={() => setIsMenuOpen(false)}
                       className="block py-2 text-gray-700 hover:text-blue-600"
                     >
-                      Post Lost Item
+                      Found Items
                     </Link>
-                    <Link
-                      to="/post-found"
-                      onClick={() => setIsMenuOpen(false)}
-                      className="block py-2 text-gray-700 hover:text-blue-600"
-                    >
-                      Post Found Item
-                    </Link>
+                    {!user.is_admin && (
+                      <>
+                        <Link
+                          to="/messages"
+                          onClick={() => setIsMenuOpen(false)}
+                          className="block py-2 text-gray-700 hover:text-blue-600 flex items-center space-x-2"
+                        >
+                          <MessageCircle size={16} />
+                          <span>Messages</span>
+                        </Link>
+                        <Link
+                          to="/post-lost"
+                          onClick={() => setIsMenuOpen(false)}
+                          className="block py-2 text-gray-700 hover:text-blue-600"
+                        >
+                          Post Lost Item
+                        </Link>
+                        <Link
+                          to="/post-found"
+                          onClick={() => setIsMenuOpen(false)}
+                          className="block py-2 text-gray-700 hover:text-blue-600"
+                        >
+                          Post Found Item
+                        </Link>
+                      </>
+                    )}
                   </>
                 )}
               </div>
