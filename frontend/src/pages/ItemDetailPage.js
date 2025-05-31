@@ -31,8 +31,6 @@ const ItemDetailPage = () => {
         setLoading(true);
         setError('');
         const response = await itemsAPI.getItem(id);
-        console.log('Fetched item data:', response); // Debug log
-        console.log('Current user:', user); // Debug log
         setItem(response);
       } catch (err) {
         console.error('Error fetching item:', err);
@@ -78,15 +76,6 @@ const ItemDetailPage = () => {
     user.id === item.user_id ||
     user.email === item.contact_info
   );
-  
-  console.log('Ownership check:', {
-    userEmail: user?.email,
-    userId: user?.id,
-    itemOwnerEmail: item?.owner_email,
-    itemUserId: item?.user_id,
-    itemContactInfo: item?.contact_info,
-    isOwner
-  }); // Debug log
   
   const isLostItem = item.type === 'lost';
 

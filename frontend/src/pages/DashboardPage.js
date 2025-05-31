@@ -8,7 +8,6 @@ import {
   Clock, 
   DollarSign, 
   Eye, 
-  Edit, 
   Trash2, 
   Plus,
   Search,
@@ -236,7 +235,6 @@ const DashboardPage = () => {
                                 <Eye size={12} />
                                 <span>View</span>
                               </Link>
-                              <button className="btn-ghost text-xs">Edit</button>
                             </div>
                           </div>
                         ))}
@@ -285,7 +283,6 @@ const DashboardPage = () => {
                                 <Eye size={12} />
                                 <span>View</span>
                               </Link>
-                              <button className="btn-ghost text-xs">Edit</button>
                             </div>
                           </div>
                         ))}
