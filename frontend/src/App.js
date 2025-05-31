@@ -15,6 +15,8 @@ import BrowseFoundPage from './pages/BrowseFoundPage';
 import ItemDetailPage from './pages/ItemDetailPage';
 import DashboardPage from './pages/DashboardPage';
 import AdminDashboard from './pages/AdminDashboard';
+import MessagesPage from './pages/MessagesPage';
+import ChatPage from './pages/ChatPage';
 import { isAuthenticated, getCurrentUserFromStorage } from './services/api';
 
 // Mock data for demonstration
@@ -180,6 +182,8 @@ function App() {
               <Route path="/lost-items" element={<BrowseLostPage />} />
               <Route path="/found-items" element={<BrowseFoundPage />} />
               <Route path="/item/:id" element={<ItemDetailPage />} />
+              <Route path="/messages" element={user ? <MessagesPage /> : <Navigate to="/login" />} />
+              <Route path="/messages/:claimRequestId" element={user ? <ChatPage /> : <Navigate to="/login" />} />
             </Routes>
           </AnimatePresence>
         </Router>

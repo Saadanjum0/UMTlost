@@ -1,71 +1,41 @@
 import React, { useState } from 'react';
-import { Image as ImageIcon } from 'lucide-react';
+import { Package } from 'lucide-react';
 
-const ImageWithFallback = ({ 
-  src, 
-  alt, 
-  className = '', 
-  fallbackSrc = null,
-  showPlaceholder = true,
-  onError = null,
-  ...props 
-}) => {
+const ImageWithFallback = ({ src, alt, className, fallbackIcon: FallbackIcon = Package }) => {
   const [imageError, setImageError] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [imageLoading, setImageLoading] = useState(true);
 
-  const handleImageError = (e) => {
-    console.warn(`Failed to load image: ${src}`);
+  const handleImageError = () => {
     setImageError(true);
-    setIsLoading(false);
-    
-    if (onError) {
-      onError(e);
-    }
-    
-    // Try fallback image if provided
-    if (fallbackSrc && e.target.src !== fallbackSrc) {
-      e.target.src = fallbackSrc;
-      setImageError(false);
-      return;
-    }
+    setImageLoading(false);
   };
 
   const handleImageLoad = () => {
-    setIsLoading(false);
-    setImageError(false);
+    setImageLoading(false);
   };
 
-  // If image failed and no fallback, show placeholder
-  if (imageError && showPlaceholder) {
+  if (!src || imageError) {
     return (
-      <div 
-        className={`flex items-center justify-center bg-gray-100 text-gray-400 ${className}`}
-        {...props}
-      >
-        <div className="text-center">
-          <ImageIcon size={24} className="mx-auto mb-1" />
-          <span className="text-xs">No Image</span>
-        </div>
+      <div className={`${className} bg-gray-100 flex items-center justify-center`}>
+        <FallbackIcon className="text-gray-400" size={48} />
       </div>
     );
   }
 
   return (
     <div className="relative">
-      {isLoading && (
-        <div 
-          className={`absolute inset-0 flex items-center justify-center bg-gray-100 ${className}`}
-        >
-          <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      {imageLoading && (
+        <div className={`${className} bg-gray-100 flex items-center justify-center absolute inset-0`}>
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
         </div>
       )}
       <img
         src={src}
         alt={alt}
-        className={`${className} ${isLoading ? 'opacity-0' : 'opacity-100'} transition-opacity duration-200`}
+        className={className}
         onError={handleImageError}
         onLoad={handleImageLoad}
-        {...props}
+        style={{ display: imageLoading ? 'none' : 'block' }}
       />
     </div>
   );

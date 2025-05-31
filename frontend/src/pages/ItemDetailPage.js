@@ -6,7 +6,7 @@ import {
   MessageCircle, CheckCircle, X, User, Mail, Phone, AlertTriangle
 } from 'lucide-react';
 import { UserContext } from '../App';
-import { itemsAPI } from '../services/api';
+import { itemsAPI, claimsAPI } from '../services/api';
 import ImageWithFallback from '../components/ImageWithFallback';
 
 const ItemDetailPage = () => {
@@ -23,6 +23,7 @@ const ItemDetailPage = () => {
     phoneNumber: ''
   });
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [submittingClaim, setSubmittingClaim] = useState(false);
 
   // Fetch item data from API
   useEffect(() => {
@@ -79,11 +80,31 @@ const ItemDetailPage = () => {
   
   const isLostItem = item.type === 'lost';
 
-  const handleClaimSubmit = (e) => {
+  const handleClaimSubmit = async (e) => {
     e.preventDefault();
-    // In a real app, this would send the claim request to the server
-    alert('Claim request sent! The owner will be notified.');
-    setShowClaimForm(false);
+    if (submittingClaim) return;
+
+    try {
+      setSubmittingClaim(true);
+      
+      // Create the claim request
+      const claimRequest = await claimsAPI.createClaim({
+        item_id: item.id,
+        message: claimData.message
+      });
+
+      // Close the form
+      setShowClaimForm(false);
+      
+      // Navigate to the messages page for this claim
+      navigate(`/messages/${claimRequest.id}`);
+      
+    } catch (error) {
+      console.error('Error creating claim:', error);
+      alert('Failed to submit claim request. Please try again.');
+    } finally {
+      setSubmittingClaim(false);
+    }
   };
 
   const handleShare = (platform) => {
@@ -490,9 +511,10 @@ const ItemDetailPage = () => {
                   </button>
                   <button
                     type="submit"
+                    disabled={submittingClaim}
                     className="btn-primary flex-1"
                   >
-                    Send Request
+                    {submittingClaim ? 'Sending...' : 'Send Request'}
                   </button>
                 </div>
               </form>

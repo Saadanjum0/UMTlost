@@ -201,4 +201,32 @@ class RegisterRequest(BaseModel):
 class ImageUploadResponse(BaseModel):
     url: str
     public_url: str
-    path: str 
+    path: str
+
+# Messaging Models
+class MessageBase(BaseModel):
+    message: str = Field(..., min_length=1, max_length=1000)
+
+class MessageCreate(MessageBase):
+    claim_request_id: str
+
+class Message(MessageBase):
+    id: str
+    claim_request_id: str
+    sender_id: str
+    is_read: bool = False
+    created_at: datetime
+    
+    # Computed fields
+    sender_name: Optional[str] = None
+    sender_email: Optional[str] = None
+
+class ConversationResponse(BaseModel):
+    claim_request: ClaimRequest
+    messages: List[Message]
+    item: Item
+    participants: List[UserProfile]
+
+class ConversationListResponse(BaseModel):
+    conversations: List[dict]  # Simplified conversation data for list view
+    total: int 

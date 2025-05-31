@@ -482,28 +482,79 @@ async def get_item(item_id: str):
     try:
         supabase = get_supabase()
         
-        # Increment view count
-        supabase.rpc("increment_item_view_count", {"item_uuid": item_id}).execute()
-        
-        # Get item with owner info
-        response = supabase.table("items").select("""
+        # First try to find the item in lost_items table
+        lost_response = supabase.table("lost_items").select("""
             *,
-            profiles!items_user_id_fkey(first_name, last_name, email)
+            categories!lost_items_category_id_fkey(name),
+            locations!lost_items_location_id_fkey(name),
+            profiles!lost_items_user_id_fkey(first_name, last_name, email)
         """).eq("id", item_id).execute()
         
-        if not response.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Item not found"
-            )
+        if lost_response.data:
+            # Item found in lost_items table
+            item_data = lost_response.data[0]
+            unified_item = {
+                "id": item_data["id"],
+                "type": "lost",
+                "user_id": item_data["user_id"],
+                "title": item_data["title"],
+                "description": item_data["description"],
+                "category": item_data["categories"]["name"].lower() if item_data.get("categories") else "other",
+                "location": item_data["locations"]["name"] if item_data.get("locations") else "Unknown",
+                "images": item_data.get("images", []) or [],
+                "image": item_data.get("images", [None])[0] if item_data.get("images") else f"{API_BASE_URL}/placeholder/400x300",
+                "reward": item_data.get("reward_amount", 0) or 0,
+                "urgency": item_data.get("urgency", "medium").lower(),
+                "date_lost": item_data.get("date_lost"),
+                "time_lost": item_data.get("time_lost"),
+                "contact_preference": item_data.get("contact_method", "email").lower(),
+                "status": item_data.get("status", "active").lower(),
+                "created_at": item_data["created_at"],
+                "updated_at": item_data["updated_at"],
+                "owner_name": get_full_name_from_profile(item_data.get("profiles")),
+                "owner_email": item_data["profiles"]["email"] if item_data.get("profiles") else "Unknown"
+            }
+            return Item(**unified_item)
         
-        item_data = response.data[0]
-        if item_data.get("profiles"):
-            item_data["owner_name"] = get_full_name_from_profile(item_data["profiles"])
-            item_data["owner_email"] = item_data["profiles"]["email"]
-            del item_data["profiles"]
+        # Try found_items table
+        found_response = supabase.table("found_items").select("""
+            *,
+            categories!found_items_category_id_fkey(name),
+            locations!found_items_location_id_fkey(name),
+            profiles!found_items_user_id_fkey(first_name, last_name, email)
+        """).eq("id", item_id).execute()
         
-        return Item(**item_data)
+        if found_response.data:
+            # Item found in found_items table
+            item_data = found_response.data[0]
+            unified_item = {
+                "id": item_data["id"],
+                "type": "found",
+                "user_id": item_data["user_id"],
+                "title": item_data["title"],
+                "description": item_data["description"],
+                "category": item_data["categories"]["name"].lower() if item_data.get("categories") else "other",
+                "location": item_data["locations"]["name"] if item_data.get("locations") else "Unknown",
+                "images": item_data.get("images", []) or [],
+                "image": item_data.get("images", [None])[0] if item_data.get("images") else f"{API_BASE_URL}/placeholder/400x300",
+                "reward": 0,  # Found items don't have rewards
+                "urgency": "medium",  # Default urgency for found items
+                "date_lost": item_data.get("date_found"),  # Use date_found as date_lost for consistency
+                "time_lost": item_data.get("time_found"),
+                "contact_preference": item_data.get("contact_method", "email").lower(),
+                "status": "active" if item_data.get("status", "available").lower() == "available" else item_data.get("status", "active").lower(),
+                "created_at": item_data["created_at"],
+                "updated_at": item_data["updated_at"],
+                "owner_name": get_full_name_from_profile(item_data.get("profiles")),
+                "owner_email": item_data["profiles"]["email"] if item_data.get("profiles") else "Unknown"
+            }
+            return Item(**unified_item)
+        
+        # Item not found in either table
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Item not found"
+        )
         
     except HTTPException:
         raise
@@ -1018,6 +1069,376 @@ async def create_claim_request(claim: ClaimRequestCreate, current_user = Depends
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error creating claim: {str(e)}"
+        )
+
+# Messaging endpoints
+@api_router.get("/conversations", response_model=ConversationListResponse)
+async def get_user_conversations(current_user = Depends(get_current_user)):
+    """Get all conversations for the current user"""
+    try:
+        supabase = get_supabase_admin()
+        
+        # Get claim requests where user is claimer
+        claimer_claims_response = supabase.table("claim_requests").select("*").eq("claimer_id", current_user["id"]).order("created_at", desc=True).execute()
+
+        # Get claim requests where user is item owner
+        # First get the user's items from both tables
+        lost_items_response = supabase.table("lost_items").select("id").eq("user_id", current_user["id"]).execute()
+        found_items_response = supabase.table("found_items").select("id").eq("user_id", current_user["id"]).execute()
+        
+        user_item_ids = []
+        if lost_items_response.data:
+            user_item_ids.extend([item["id"] for item in lost_items_response.data])
+        if found_items_response.data:
+            user_item_ids.extend([item["id"] for item in found_items_response.data])
+        
+        owner_claims_response = None
+        if user_item_ids:
+            owner_claims_response = supabase.table("claim_requests").select("*").in_("item_id", user_item_ids).order("created_at", desc=True).execute()
+
+        # Combine all claims
+        all_claims = []
+        if claimer_claims_response.data:
+            all_claims.extend(claimer_claims_response.data)
+        if owner_claims_response and owner_claims_response.data:
+            all_claims.extend(owner_claims_response.data)
+
+        # Remove duplicates based on claim ID
+        seen_ids = set()
+        unique_claims = []
+        for claim in all_claims:
+            if claim["id"] not in seen_ids:
+                unique_claims.append(claim)
+                seen_ids.add(claim["id"])
+
+        conversations = []
+        for claim in unique_claims:
+            # Get item details
+            item = None
+            try:
+                # Try lost_items first
+                lost_item_response = supabase.table("lost_items").select("*").eq("id", claim["item_id"]).execute()
+                if lost_item_response.data:
+                    item = lost_item_response.data[0]
+                    item["type"] = "lost"
+                else:
+                    # Try found_items
+                    found_item_response = supabase.table("found_items").select("*").eq("id", claim["item_id"]).execute()
+                    if found_item_response.data:
+                        item = found_item_response.data[0]
+                        item["type"] = "found"
+            except:
+                continue
+            
+            if not item:
+                continue
+            
+            # Get claimer profile
+            claimer_profile = None
+            try:
+                claimer_response = supabase.table("profiles").select("*").eq("id", claim["claimer_id"]).execute()
+                if claimer_response.data:
+                    claimer_profile = claimer_response.data[0]
+            except:
+                continue
+            
+            # Get owner profile  
+            owner_profile = None
+            try:
+                owner_response = supabase.table("profiles").select("*").eq("id", item["user_id"]).execute()
+                if owner_response.data:
+                    owner_profile = owner_response.data[0]
+            except:
+                continue
+            
+            if not claimer_profile or not owner_profile:
+                continue
+            
+            # Get latest message for this conversation
+            latest_msg_response = supabase.table("chat_messages").select("*").eq("claim_request_id", claim["id"]).order("created_at", desc=True).limit(1).execute()
+            
+            # Get unread count
+            unread_response = supabase.table("chat_messages").select("*", count="exact").eq("claim_request_id", claim["id"]).eq("is_read", False).neq("sender_id", current_user["id"]).execute()
+            
+            # Determine other participant info
+            is_claimer = claim["claimer_id"] == current_user["id"]
+            if is_claimer:
+                other_participant = owner_profile
+                relationship = "owner"
+            else:
+                other_participant = claimer_profile
+                relationship = "claimer"
+            
+            conversation_data = {
+                "claim_request_id": claim["id"],
+                "item": {
+                    "id": item["id"],
+                    "title": item["title"],
+                    "type": item["type"],
+                    "image": item.get("images", [None])[0] if item.get("images") else None
+                },
+                "other_participant": {
+                    "id": other_participant["id"],
+                    "name": get_full_name_from_profile(other_participant),
+                    "email": other_participant["email"]
+                },
+                "relationship": relationship,
+                "latest_message": latest_msg_response.data[0] if latest_msg_response.data else None,
+                "unread_count": unread_response.count or 0,
+                "last_activity": claim["created_at"]
+            }
+            conversations.append(conversation_data)
+
+        return ConversationListResponse(conversations=conversations)
+        
+    except Exception as e:
+        logger.error(f"Error fetching conversations: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching conversations: {str(e)}"
+        )
+
+@api_router.get("/conversations/{claim_request_id}", response_model=ConversationResponse)
+async def get_conversation(claim_request_id: str, current_user = Depends(get_current_user)):
+    """Get specific conversation with all messages"""
+    try:
+        supabase = get_supabase_admin()
+        
+        # Get claim request
+        claim_response = supabase.table("claim_requests").select("*").eq("id", claim_request_id).execute()
+
+        if not claim_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation not found"
+            )
+
+        claim = claim_response.data[0]
+        
+        # Get item details
+        item = None
+        try:
+            # Try lost_items first
+            lost_item_response = supabase.table("lost_items").select("*").eq("id", claim["item_id"]).execute()
+            if lost_item_response.data:
+                item = lost_item_response.data[0]
+                item["type"] = "lost"
+            else:
+                # Try found_items
+                found_item_response = supabase.table("found_items").select("*").eq("id", claim["item_id"]).execute()
+                if found_item_response.data:
+                    item = found_item_response.data[0]
+                    item["type"] = "found"
+        except:
+            pass
+        
+        if not item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Item not found"
+            )
+        
+        # Check if user has access to this conversation
+        is_claimer = claim["claimer_id"] == current_user["id"]
+        is_owner = item["user_id"] == current_user["id"]
+        
+        if not (is_claimer or is_owner):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+        
+        # Get all messages with sender profiles
+        messages_response = supabase.table("chat_messages").select("*").eq("claim_request_id", claim_request_id).order("created_at").execute()
+
+        # Mark messages as read for current user
+        supabase.table("chat_messages").update({"is_read": True}).eq("claim_request_id", claim_request_id).neq("sender_id", current_user["id"]).execute()
+
+        # Format messages
+        messages = []
+        for msg in messages_response.data:
+            # Get sender profile
+            sender_response = supabase.table("profiles").select("*").eq("id", msg["sender_id"]).execute()
+            sender_profile = sender_response.data[0] if sender_response.data else {}
+            
+            message_data = Message(
+                id=msg["id"],
+                claim_request_id=msg["claim_request_id"],
+                sender_id=msg["sender_id"],
+                message=msg["message"],
+                is_read=msg["is_read"],
+                created_at=msg["created_at"],
+                sender_name=get_full_name_from_profile(sender_profile),
+                sender_email=sender_profile.get("email", "Unknown")
+            )
+            messages.append(message_data)
+
+        # Get participant profiles
+        owner_response = supabase.table("profiles").select("*").eq("id", item["user_id"]).execute()
+        claimer_response = supabase.table("profiles").select("*").eq("id", claim["claimer_id"]).execute()
+        
+        owner_profile = owner_response.data[0] if owner_response.data else {}
+        claimer_profile = claimer_response.data[0] if claimer_response.data else {}
+        
+        # Create UserProfile objects
+        participants = [
+            UserProfile(
+                id=owner_profile.get("id", ""),
+                first_name=owner_profile.get("first_name", ""),
+                last_name=owner_profile.get("last_name", ""),
+                email=owner_profile.get("email", ""),
+                full_name=get_full_name_from_profile(owner_profile),
+                profile_image_url=owner_profile.get("avatar_url")
+            ),
+            UserProfile(
+                id=claimer_profile.get("id", ""),
+                first_name=claimer_profile.get("first_name", ""),
+                last_name=claimer_profile.get("last_name", ""),
+                email=claimer_profile.get("email", ""),
+                full_name=get_full_name_from_profile(claimer_profile),
+                profile_image_url=claimer_profile.get("avatar_url")
+            )
+        ]
+
+        # Create unified item format
+        unified_item = {
+            "id": item["id"],
+            "type": item["type"],
+            "user_id": item["user_id"],
+            "title": item["title"],
+            "description": item["description"],
+            "category": "other",  # Default
+            "location": "Unknown",  # Default
+            "images": item.get("images", []) or [],
+            "image": item.get("images", [None])[0] if item.get("images") else None,
+            "reward": item.get("reward_amount", 0) or 0,
+            "urgency": item.get("urgency", "medium").lower() if item["type"] == "lost" else "medium",
+            "date_lost": item.get("date_lost") or item.get("date_found"),
+            "time_lost": item.get("time_lost") or item.get("time_found"),
+            "contact_preference": item.get("contact_method", "email").lower(),
+            "status": "active",
+            "created_at": item["created_at"],
+            "updated_at": item["updated_at"],
+            "owner_name": get_full_name_from_profile(owner_profile),
+            "owner_email": owner_profile.get("email", "Unknown")
+        }
+
+        return ConversationResponse(
+            claim_request=ClaimRequest(**claim),
+            messages=messages,
+            item=Item(**unified_item),
+            participants=participants
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching conversation: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching conversation: {str(e)}"
+        )
+
+@api_router.post("/conversations/{claim_request_id}/messages", response_model=Message)
+async def send_message(claim_request_id: str, message_data: MessageCreate, current_user = Depends(get_current_user)):
+    """Send a new message in a conversation"""
+    try:
+        supabase = get_supabase_admin()
+        
+        # Verify claim request exists and user has access
+        claim_response = supabase.table("claim_requests").select("*").eq("id", claim_request_id).execute()
+
+        if not claim_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation not found"
+            )
+
+        claim = claim_response.data[0]
+        
+        # Get item to check ownership
+        item = None
+        try:
+            # Try lost_items first
+            lost_item_response = supabase.table("lost_items").select("*").eq("id", claim["item_id"]).execute()
+            if lost_item_response.data:
+                item = lost_item_response.data[0]
+            else:
+                # Try found_items
+                found_item_response = supabase.table("found_items").select("*").eq("id", claim["item_id"]).execute()
+                if found_item_response.data:
+                    item = found_item_response.data[0]
+        except:
+            pass
+        
+        if not item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Item not found"
+            )
+        
+        is_claimer = claim["claimer_id"] == current_user["id"]
+        is_owner = item["user_id"] == current_user["id"]
+        
+        if not (is_claimer or is_owner):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied"
+            )
+
+        # Create message
+        message_insert = {
+            "claim_request_id": claim_request_id,
+            "sender_id": current_user["id"],
+            "message": message_data.message,
+            "is_read": False
+        }
+
+        created_message = supabase.table("chat_messages").insert(message_insert).execute()
+
+        if not created_message.data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to send message"
+            )
+
+        # Get sender info for response
+        sender_response = supabase.table("profiles").select("full_name, email").eq("id", current_user["id"]).single().execute()
+        sender = sender_response.data
+
+        message_response = Message(
+            **created_message.data[0],
+            sender_name=sender["full_name"],
+            sender_email=sender["email"]
+        )
+
+        return message_response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending message: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error sending message: {str(e)}"
+        )
+
+@api_router.put("/conversations/{claim_request_id}/read")
+async def mark_conversation_read(claim_request_id: str, current_user = Depends(get_current_user)):
+    """Mark all messages in conversation as read"""
+    try:
+        supabase = get_supabase_admin()
+        
+        # Mark messages as read
+        update_response = supabase.table("chat_messages").update({"is_read": True}).eq("claim_request_id", claim_request_id).neq("sender_id", current_user["id"]).execute()
+
+        return {"success": True, "message": "Conversation marked as read"}
+        
+    except Exception as e:
+        logger.error(f"Error marking conversation as read: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error marking conversation as read: {str(e)}"
         )
 
 # Admin dependency

@@ -153,6 +153,32 @@ export const claimsAPI = {
   },
 };
 
+// Messaging API functions
+export const messagesAPI = {
+  getConversations: async () => {
+    const response = await api.get('/conversations');
+    return response.data;
+  },
+
+  getConversation: async (claimRequestId) => {
+    const response = await api.get(`/conversations/${claimRequestId}`);
+    return response.data;
+  },
+
+  sendMessage: async (claimRequestId, message) => {
+    const response = await api.post(`/conversations/${claimRequestId}/messages`, {
+      message,
+      claim_request_id: claimRequestId
+    });
+    return response.data;
+  },
+
+  markConversationRead: async (claimRequestId) => {
+    const response = await api.put(`/conversations/${claimRequestId}/read`);
+    return response.data;
+  },
+};
+
 // Health check
 export const healthCheck = async () => {
   try {

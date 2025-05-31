@@ -1,7 +1,7 @@
 import React, { useContext, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, Menu, X, User, Plus, List, Home, Shield } from 'lucide-react';
+import { Search, Menu, X, User, Plus, List, Home, Shield, MessageCircle } from 'lucide-react';
 import { UserContext } from '../App';
 import { authAPI } from '../services/api';
 
@@ -61,6 +61,9 @@ const Header = () => {
               </Link>
               {user && !user.is_admin && (
                 <>
+                  <Link to="/messages" className="nav-link">
+                    Messages
+                  </Link>
                   <Link to="/post-lost" className="nav-link">
                     Post Lost
                   </Link>
@@ -122,6 +125,15 @@ const Header = () => {
                     >
                       Dashboard
                     </Link>
+                    {!user.is_admin && (
+                      <Link
+                        to="/messages"
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-white/10 flex items-center space-x-2"
+                      >
+                        <MessageCircle size={14} />
+                        <span>Messages</span>
+                      </Link>
+                    )}
                     {user.is_admin && (
                       <Link
                         to="/admin"
@@ -198,6 +210,13 @@ const Header = () => {
                 </Link>
                 {user && !user.is_admin && (
                   <>
+                    <Link
+                      to="/messages"
+                      onClick={() => setIsMenuOpen(false)}
+                      className="block py-2 text-gray-700 hover:text-blue-600"
+                    >
+                      Messages
+                    </Link>
                     <Link
                       to="/post-lost"
                       onClick={() => setIsMenuOpen(false)}
