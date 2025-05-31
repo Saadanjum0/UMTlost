@@ -69,6 +69,27 @@ export const authAPI = {
     const response = await api.get('/auth/me');
     return response.data;
   },
+
+  // Admin API methods
+  get: async (url, config = {}) => {
+    const response = await api.get(url, config);
+    return response;
+  },
+
+  post: async (url, data, config = {}) => {
+    const response = await api.post(url, data, config);
+    return response;
+  },
+
+  put: async (url, data, config = {}) => {
+    const response = await api.put(url, data, config);
+    return response;
+  },
+
+  delete: async (url, config = {}) => {
+    const response = await api.delete(url, config);
+    return response;
+  },
 };
 
 // Items API functions

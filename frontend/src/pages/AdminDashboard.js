@@ -53,6 +53,9 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [moderationNote, setModerationNote] = useState('');
+  const [deleteConfirmation, setDeleteConfirmation] = useState(null); // { item, show }
+  const [selectedItems, setSelectedItems] = useState([]); // For bulk operations
+  const [showBulkActions, setShowBulkActions] = useState(false);
   const [filters, setFilters] = useState({
     status: '',
     type: '',
@@ -152,29 +155,133 @@ const AdminDashboard = () => {
   };
 
   const handleDeleteItem = async (itemId) => {
-    if (!window.confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
+    // Find the item to get its details for confirmation
+    const item = items.find(i => i.id === itemId);
+    if (!item) {
+      alert('Item not found');
       return;
     }
+    
+    // Show custom confirmation modal
+    setDeleteConfirmation({ item, show: true });
+  };
 
+  const confirmDeleteItem = async () => {
+    if (!deleteConfirmation?.item) return;
+    
+    const { item } = deleteConfirmation;
+    
     try {
-      await authAPI.delete(`/admin/items/${itemId}`);
+      setLoading(true);
+      const response = await authAPI.delete(`/admin/items/${item.id}`);
       
-      // Remove item from local state
-      setItems(prev => prev.filter(item => item.id !== itemId));
+      if (response.data.success) {
+        // Remove item from local state
+        setItems(prev => prev.filter(i => i.id !== item.id));
+        
+        // Close modal if this item was selected
+        if (selectedItem?.id === item.id) {
+          setSelectedItem(null);
+        }
+        
+        // Close confirmation modal
+        setDeleteConfirmation(null);
+        
+        // Show success message
+        alert(`Item "${item.title}" deleted successfully`);
+        
+        // Reload stats to update counts
+        await loadStats();
+      } else {
+        throw new Error('Delete operation failed');
+      }
+    } catch (error) {
+      console.error('Error deleting item:', error);
       
-      // Close modal if this item was selected
-      if (selectedItem?.id === itemId) {
-        setSelectedItem(null);
+      // More specific error messages
+      let errorMessage = 'Failed to delete item. Please try again.';
+      if (error.response?.status === 404) {
+        errorMessage = 'Item not found. It may have already been deleted.';
+      } else if (error.response?.status === 403) {
+        errorMessage = 'You do not have permission to delete this item.';
+      } else if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
       }
       
-      // Show success message
-      alert('Item deleted successfully');
+      alert(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Bulk operations
+  const toggleItemSelection = (itemId) => {
+    setSelectedItems(prev => {
+      const newSelection = prev.includes(itemId) 
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId];
+      setShowBulkActions(newSelection.length > 0);
+      return newSelection;
+    });
+  };
+
+  const selectAllItems = () => {
+    const allItemIds = items.map(item => item.id);
+    setSelectedItems(allItemIds);
+    setShowBulkActions(allItemIds.length > 0);
+  };
+
+  const clearSelection = () => {
+    setSelectedItems([]);
+    setShowBulkActions(false);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedItems.length === 0) return;
+    
+    const confirmMessage = `Are you sure you want to delete ${selectedItems.length} selected item(s)? This action cannot be undone.`;
+    if (!window.confirm(confirmMessage)) return;
+
+    try {
+      setLoading(true);
+      
+      // Delete items one by one (could be optimized with a bulk endpoint)
+      const deletePromises = selectedItems.map(itemId => 
+        authAPI.delete(`/admin/items/${itemId}`)
+      );
+      
+      const results = await Promise.allSettled(deletePromises);
+      const successful = results.filter(result => result.status === 'fulfilled').length;
+      const failed = results.length - successful;
+      
+      // Update local state - remove successfully deleted items
+      const failedItemIds = [];
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          failedItemIds.push(selectedItems[index]);
+        }
+      });
+      
+      setItems(prev => prev.filter(item => !selectedItems.includes(item.id) || failedItemIds.includes(item.id)));
+      
+      // Clear selection
+      clearSelection();
+      
+      // Show results
+      if (failed === 0) {
+        alert(`Successfully deleted ${successful} item(s)`);
+      } else {
+        alert(`Deleted ${successful} item(s). Failed to delete ${failed} item(s).`);
+      }
       
       // Reload stats
       await loadStats();
+      
     } catch (error) {
-      console.error('Error deleting item:', error);
-      alert('Failed to delete item. Please try again.');
+      console.error('Error in bulk delete:', error);
+      alert('An error occurred during bulk delete. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -249,6 +356,14 @@ const AdminDashboard = () => {
 
   const ItemRow = ({ item }) => (
     <tr className="hover:bg-gray-50 border-l-4 border-l-transparent hover:border-l-blue-500 transition-all">
+      <td className="px-6 py-4 whitespace-nowrap">
+        <input
+          type="checkbox"
+          checked={selectedItems.includes(item.id)}
+          onChange={() => toggleItemSelection(item.id)}
+          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+        />
+      </td>
       <td className="px-6 py-4 whitespace-nowrap">
         <div className="flex items-center">
           {item.flagged && (
@@ -623,9 +738,44 @@ const AdminDashboard = () => {
               </div>
               ) : (
               <div className="overflow-x-auto">
+                {/* Bulk Actions Bar */}
+                {showBulkActions && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <span className="text-sm font-medium text-blue-800">
+                        {selectedItems.length} item(s) selected
+                      </span>
+                      <button
+                        onClick={clearSelection}
+                        className="text-sm text-blue-600 hover:text-blue-800"
+                      >
+                        Clear selection
+                      </button>
+                    </div>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={handleBulkDelete}
+                        className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition-colors"
+                        disabled={loading}
+                      >
+                        <Trash2 size={14} className="inline mr-1" />
+                        Delete Selected
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        <input
+                          type="checkbox"
+                          checked={items.length > 0 && selectedItems.length === items.length}
+                          onChange={selectedItems.length === items.length ? clearSelection : selectAllItems}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                      </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
@@ -785,6 +935,64 @@ const AdminDashboard = () => {
       {/* Item Detail Modal */}
       {selectedItem && (
         <ItemDetailModal item={selectedItem} onClose={() => setSelectedItem(null)} />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmation?.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-md w-full mx-4">
+            <div className="p-6">
+              <div className="flex items-center mb-4">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mr-4">
+                  <Trash2 size={24} className="text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Delete Item</h3>
+                  <p className="text-sm text-gray-600">This action cannot be undone</p>
+                </div>
+              </div>
+              
+              <div className="mb-6">
+                <p className="text-gray-700">
+                  Are you sure you want to permanently delete the following item?
+                </p>
+                <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="font-medium text-gray-900">{deleteConfirmation.item.title}</div>
+                  <div className="text-sm text-gray-600">
+                    {deleteConfirmation.item.type} • {deleteConfirmation.item.location}
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    Posted by {deleteConfirmation.item.owner_name || 'Unknown'}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setDeleteConfirmation(null)}
+                  className="flex-1 btn-ghost"
+                  disabled={loading}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteItem}
+                  className="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <div className="flex items-center justify-center">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                      Deleting...
+                    </div>
+                  ) : (
+                    'Delete Item'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
